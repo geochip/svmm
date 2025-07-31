@@ -21,7 +21,7 @@ if [ -d "$vm_dir" ]; then
 	rm -rf "$vm_dir"
 fi
 
-vm_mac_address="52:54:00:$(printf '%s' "$vm_name" | gzip -1 -c | tail -c8 | od -t x4 -N 4 -A n | tail -c7 | sed -E 's/([a-f0-9]{2})/\1:/g' | head -c8)"
+vm_mac_address="52:54:00:$(printf '%s' "$vm_name" | crc32 /dev/stdin | tail -c7 | sed -E 's/([a-f0-9]{2})/\1:/g' | head -c8)"
 
 mkdir -p "$vm_dir"
 
