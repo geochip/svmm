@@ -1,0 +1,42 @@
+#!/bin/sh
+
+PROG="${0##*/}"
+
+vmm_dir="$HOME/vmm"
+
+show_help()
+{
+	cat <<-EOF
+	shvmm-list [options]
+
+	Options:
+	  -h, --help			show help and exit
+	EOF
+}
+
+fatal()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+	exit 1
+}
+
+while true; do
+	case "$1" in
+	-h | --help)
+		show_help
+		exit 0
+		;;
+	-*)
+		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
+		show_help
+		exit 1
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
+for vm_name in "$vmm_dir"/*; do
+	echo "${vm_name##*/}"
+done
