@@ -1,22 +1,127 @@
 #!/bin/sh
 
-set -efux
+set -f
+
+PROG="${0##*/}"
 
 vmm_dir="$HOME/vmm"
 images_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/images"
 
-replace=1
-vm_name="$1"
+default_boot_drive_url='https://ftp.altlinux.org/pub/distributions/ALTLinux/images/Sisyphus/cloud/x86_64/alt-sisyphus-cloud-x86_64.qcow2'
+
+show_help()
+{
+	cat <<-EOF
+	shvmm-run [options] VM_NAME
+
+	Options:
+	  --replace			first delete VM with this name if it already exists
+	  --boot-drive-url <URL>	use qcow2 file at this url as boot image (default: $default_boot_drive_url)
+	  --second-drive <path>		path to qcow2 file to attach another drive to the VM
+	  --net-tap <tap>		use QEMU tap networking and connect VM's NIC to tap device with this name
+	  --net-address <IP>		assign this IP address to the VM's network interface
+	  --net-gateway <IP>		use this IP as the default gateway in the VM
+	  --spice			enable and connect to SPICE
+	  --no-cloud-init-drive		don't attach cloud-init drive for NoCloud datasource
+	  -v, --verbose			print executed commands
+	  -h, --help			show help and exit
+	EOF
+}
+
+fatal()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+	exit 1
+}
+
+vm_name=
+verbose=0
+replace=0
+boot_drive_url=
+second_drive=
+network_tap_device_name=
+network_vm_ip_address=
+network_vm_default_gateway=
+enable_spice=0
+attach_cloud_init_drive=1
+while true; do
+	case "$1" in
+	-h | --help)
+		show_help
+		exit 0
+		;;
+	-v | --verbose)
+		verbose=1
+		shift
+		;;
+	--replace)
+		replace=1
+		shift
+		;;
+	--boot-drive-url)
+		boot_drive_url="$2"
+		shift
+		shift
+		;;
+	--second-drive)
+		second_drive="$2"
+		shift
+		shift
+		;;
+	--net-tap)
+		network_tap_device_name="$2"
+		shift
+		shift
+		;;
+	--net-address)
+		network_vm_ip_address="$2"
+		shift
+		shift
+		;;
+	--net-gateway)
+		network_vm_default_gateway="$2"
+		shift
+		shift
+		;;
+	--spice)
+		enable_spice=1
+		shift
+		;;
+	--no-cloud-init-drive)
+		attach_cloud_init_drive=0
+		shift
+		;;
+	-*)
+		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
+		show_help
+		exit 1
+		;;
+	*)
+		if [ -n "$1" ]; then
+			vm_name="$1"
+			shift
+		else
+			break
+		fi
+		;;
+	esac
+done
+
+[ "$verbose" -eq 0 ] || set -x
+
+[ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
+[ -n "$boot_drive_url" ] || boot_drive_url="$default_boot_drive_url"
 
 vm_dir="$vmm_dir/$vm_name"
+vm_config_path="$vm_dir/vmm.conf"
 monitor_socket_path="$vm_dir/monitor.socket"
 
 if [ -d "$vm_dir" ]; then
-	[ "$replace" -eq 1 ] || exit 1
+	[ "$replace" -eq 1 ] || fatal "VM '$vm_name' already exists"
 
-	[ ! -S "$monitor_socket_path" ] || {
-		printf "quit\n" | socat - "unix:$monitor_socket_path"
-	}
+	if [ -S "$monitor_socket_path" ]; then
+		printf "quit\n" | socat - "unix:$monitor_socket_path" > /dev/null
+	fi
 
 	rm -rf "$vm_dir"
 fi
@@ -30,18 +135,18 @@ vm_cloud_init_drive_path="$vm_dir/cloud_init_drive.img"
 
 mkdir -p "$images_dir"
 
-image_path="$images_dir/alt-sisyphus"
-image_url='https://ftp.altlinux.org/pub/distributions/ALTLinux/images/Sisyphus/cloud/x86_64/alt-sisyphus-cloud-x86_64.qcow2'
+boot_drive_path="$images_dir/${boot_drive_url##*/}"
 
-if [ ! -f "$image_path" ]; then
-	curl "$image_url" -O "$image_path"
+if [ ! -f "$boot_drive_path" ]; then
+	echo "Downloading boot drive image from '$boot_drive_url'" >&2
+	curl "$boot_drive_url" --output "$boot_drive_path" --fail --location || fatal "Failed to download the boot drive image '$boot_drive_url'"
 fi
 
-qemu-img create -b "$image_path" -F qcow2 -f qcow2 "$vm_disk_path" 10G
+qemu-img create -b "$boot_drive_path" -F qcow2 -f qcow2 "$vm_disk_path" 10G > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
 
 ssh_key_path="$vm_dir/id_ed25519"
 
-ssh-keygen -t ed25519 -f "$ssh_key_path" -N ''
+ssh-keygen -t ed25519 -f "$ssh_key_path" -N '' > /dev/null
 
 pub_ssh_key_path="${ssh_key_path}.pub"
 pub_ssh_key="$(cat "$pub_ssh_key_path")"
@@ -61,36 +166,83 @@ preserve_hostname: false
 hostname: ${vm_name}
 EOF
 
-networking='user'
+network_type='user'
+[ -n "$network_tap_device_name" ] && network_type='tap'
 
-if [ "$networking" = 'user' ]; then
+echo "network_type=$network_type" >> "$vm_config_path"
+
+if [ "$network_type" = 'user' ]; then
 	cloud-localds "$vm_cloud_init_drive_path" "$user_data_path"
+else
+	network_config_path="$vm_dir/network.yaml"
+	cat <<-EOF > "$network_config_path"
+	version: 2
+	ethernets:
+	  interface0:
+	    match:
+	      name: "e*"
+	    addresses:
+	      - $network_vm_ip_address
+	    routes:
+	      - to: 0.0.0.0/0
+	        via: $network_vm_default_gateway
+	    nameservers:
+	      addresses:
+	        - 8.8.8.8
+	EOF
+	cloud-localds --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
 fi
 
-set -- -accel kvm \
+set -- -name "$vm_name" \
+	-accel kvm \
 	-cpu host \
-	-m 2048 \
+	-m 2G \
 	-smp 2 \
 	-display none \
 	-daemonize \
 	-monitor "unix:${monitor_socket_path},server=on,wait=off" \
-	-blockdev "driver=qcow2,node-name=disk1,file.driver=file,file.filename=${vm_disk_path},discard=unmap" \
-	-device virtio-blk-pci,drive=disk1 \
-	-blockdev "driver=raw,node-name=cloud-init-drive,file.driver=file,file.filename=${vm_cloud_init_drive_path},read-only=on,force-share=on" \
-	-device virtio-blk-pci,drive=cloud-init-drive
+	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \
+	-device virtio-blk-pci,drive=disk1
 
-vm_config_path="$vm_dir/vmm.conf"
+if [ "$attach_cloud_init_drive" -eq 1 ]; then
+	set -- "$@" -blockdev "node-name=cloud-init-drive,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=${vm_cloud_init_drive_path}" \
+		-device virtio-blk-pci,drive=cloud-init-drive
+fi
 
-if [ "$networking" = 'user' ]; then
+echo "attach_cloud_init_drive=$attach_cloud_init_drive" >> "$vm_config_path"
+
+if [ -n "$second_drive" ]; then
+	echo "second_drive=$second_drive" >> "$vm_config_path"
+
+	set -- "$@" -blockdev "node-name=disk2,discard=unmap,driver=qcow2,file.driver=file,file.filename=${second_drive}" \
+		-device virtio-blk-pci,drive=disk2
+fi
+
+if [ "$network_type" = 'user' ]; then
 	port=24000
 	while [ "$(ss --no-header --tcp state all sport "$port" | wc -l)" -ne 0 ]; do
 		port=$((port + 1))
 	done
 
-	echo "ssh_port=$port" > "$vm_config_path"
+	echo "ssh_port=$port" >> "$vm_config_path"
 
 	set -- "$@" -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${port}-:22" \
 		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address}"
+fi
+
+if [ "$network_type" = 'tap' ]; then
+	echo "network_tap_device_name=$network_tap_device_name" >> "$vm_config_path"
+
+	set -- "$@" -netdev "tap,id=net0,ifname=${network_tap_device_name},script=no" \
+		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address}"
+fi
+
+echo "vm_mac_address=$vm_mac_address" >> "$vm_config_path"
+
+if [ "$enable_spice" -eq 1 ]; then
+	echo "enable_spice=$enable_spice" >> "$vm_config_path"
+
+	set -- "$@" -display spice-app
 fi
 
 qemu-system-x86_64 "$@"
