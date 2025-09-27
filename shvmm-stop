@@ -1,0 +1,66 @@
+#!/bin/sh
+
+set -f
+
+PROG="${0##*/}"
+
+vmm_dir="$HOME/vmm"
+
+show_help()
+{
+	cat <<-EOF
+	shvmm-stop [options] VM_NAME
+
+	Options:
+	  -f, --force			forcefully quit the VM
+	  -h, --help			show help and exit
+	EOF
+}
+
+fatal()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+	exit 1
+}
+
+vm_name=
+force=0
+while true; do
+	case "$1" in
+	-h | --help)
+		show_help
+		exit 0
+		;;
+	-f | --force)
+		force=1
+		shift
+		;;
+	-*)
+		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
+		show_help
+		exit 1
+		;;
+	*)
+		if [ -n "$1" ]; then
+			vm_name="$1"
+			shift
+		else
+			break
+		fi
+		;;
+	esac
+done
+
+[ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
+
+vm_dir="$vmm_dir/$vm_name"
+monitor_socket_path="$vm_dir/monitor.socket"
+
+[ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
+[ -S "$monitor_socket_path" ] || fatal "VM '$vm_name' is not running"
+
+if [ "$force" -eq 1 ]; then
+	printf "quit\n" | socat - "unix:$monitor_socket_path" > /dev/null
+else
+	printf "system_powerdown\n" | socat - "unix:$monitor_socket_path" > /dev/null
+fi
