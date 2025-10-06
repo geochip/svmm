@@ -6,8 +6,10 @@ PROG="${0##*/}"
 
 vmm_dir="$HOME/vmm"
 images_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/images"
+iso_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/iso"
 
 default_boot_drive_url='https://ftp.altlinux.org/pub/distributions/ALTLinux/images/Sisyphus/cloud/x86_64/alt-sisyphus-cloud-x86_64.qcow2'
+default_disk_size='10G'
 
 show_help()
 {
@@ -16,6 +18,9 @@ show_help()
 
 	Options:
 	  --replace			first delete VM with this name if it already exists
+	  --iso-url <URL>		attach the ISO at this url to the VM as cdrom
+	  --create-boot-drive		create empty qcow2 file as boot drive for the VM
+	  --disk-size <GB>		allocate this much disk space for the boot drive (default: $default_disk_size)
 	  --boot-drive-url <URL>	use qcow2 file at this url as boot image (default: $default_boot_drive_url)
 	  --second-drive <path>		path to qcow2 file to attach another drive to the VM
 	  --net-tap <tap>		use QEMU tap networking and connect VM's NIC to tap device with this name
@@ -37,6 +42,9 @@ fatal()
 vm_name=
 verbose=0
 replace=0
+iso_url=
+create_boot_drive=0
+disk_size=
 boot_drive_url=
 second_drive=
 network_tap_device_name=
@@ -58,30 +66,37 @@ while true; do
 		replace=1
 		shift
 		;;
+	--iso-url)
+		iso_url="$2"
+		shift 2
+		;;
+	--create-boot-drive)
+		create_boot_drive=1
+		shift
+		;;
+	--disk-size)
+		disk_size="$2"
+		shift 2
+		;;
 	--boot-drive-url)
 		boot_drive_url="$2"
-		shift
-		shift
+		shift 2
 		;;
 	--second-drive)
 		second_drive="$2"
-		shift
-		shift
+		shift 2
 		;;
 	--net-tap)
 		network_tap_device_name="$2"
-		shift
-		shift
+		shift 2
 		;;
 	--net-address)
 		network_vm_ip_address="$2"
-		shift
-		shift
+		shift 2
 		;;
 	--net-gateway)
 		network_vm_default_gateway="$2"
-		shift
-		shift
+		shift 2
 		;;
 	--spice)
 		enable_spice=1
@@ -111,6 +126,7 @@ done
 
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 [ -n "$boot_drive_url" ] || boot_drive_url="$default_boot_drive_url"
+[ -n "$disk_size" ] || disk_size="$default_disk_size"
 
 vm_dir="$vmm_dir/$vm_name"
 vm_config_path="$vm_dir/vmm.conf"
@@ -134,15 +150,24 @@ vm_disk_path="$vm_dir/disk.qcow2"
 vm_cloud_init_drive_path="$vm_dir/cloud_init_drive.img"
 
 mkdir -p "$images_dir"
+mkdir -p "$iso_dir"
 
 boot_drive_path="$images_dir/${boot_drive_url##*/}"
+iso_path="$iso_dir/${iso_url##*/}"
 
-if [ ! -f "$boot_drive_path" ]; then
+if [ "$create_boot_drive" -eq 0 ] && [ ! -f "$boot_drive_path" ]; then
 	echo "Downloading boot drive image from '$boot_drive_url'" >&2
 	curl "$boot_drive_url" --output "$boot_drive_path" --fail --location || fatal "Failed to download the boot drive image '$boot_drive_url'"
+elif [ "$create_boot_drive" -eq 1 ] && [ -n "$iso_url" ] && [ ! -f "$iso_path" ]; then
+	echo "Downloading ISO from '$iso_url'" >&2
+	curl "$iso_url" --output "$iso_path" --fail --location || fatal "Failed to download the ISO '$boot_drive_url'"
 fi
 
-qemu-img create -b "$boot_drive_path" -F qcow2 -f qcow2 "$vm_disk_path" 10G > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
+if [ "$create_boot_drive" -eq 0 ]; then
+	qemu-img create -b "$boot_drive_path" -F qcow2 -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
+else
+	qemu-img create -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a new empty boot drive for '$vm_name'"
+fi
 
 ssh_key_path="$vm_dir/id_ed25519"
 
@@ -216,6 +241,12 @@ if [ -n "$second_drive" ]; then
 
 	set -- "$@" -blockdev "node-name=disk2,discard=unmap,driver=qcow2,file.driver=file,file.filename=${second_drive}" \
 		-device virtio-blk-pci,drive=disk2
+fi
+
+if [ -n "$iso_url" ]; then
+	# set -- "$@" -cdrom "$iso_path"
+	set -- "$@" -blockdev "node-name=cdrom1,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
+		-device ide-cd,drive=cdrom1
 fi
 
 if [ "$network_type" = 'user' ]; then
