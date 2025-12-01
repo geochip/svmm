@@ -22,6 +22,7 @@ show_help()
 	  --create-boot-drive		create empty qcow2 file as boot drive for the VM
 	  --disk-size <GB>		allocate this much disk space for the boot drive (default: $default_disk_size)
 	  --boot-drive-url <URL>	use qcow2 file at this url as boot image (default: $default_boot_drive_url)
+	  --boot-drive-path <path>	use qcow2 file at this path as boot image
 	  --second-drive <path>		path to qcow2 file to attach another drive to the VM
 	  --net-tap <tap>		use QEMU tap networking and connect VM's NIC to tap device with this name
 	  --net-address <IP>		assign this IP address to the VM's network interface
@@ -46,6 +47,7 @@ iso_url=
 create_boot_drive=0
 disk_size=
 boot_drive_url=
+boot_drive_path=
 second_drive=
 network_tap_device_name=
 network_vm_ip_address=
@@ -80,6 +82,10 @@ while true; do
 		;;
 	--boot-drive-url)
 		boot_drive_url="$2"
+		shift 2
+		;;
+	--boot-drive-path)
+		boot_drive_path="$2"
 		shift 2
 		;;
 	--second-drive)
@@ -152,7 +158,7 @@ vm_cloud_init_drive_path="$vm_dir/cloud_init_drive.img"
 mkdir -p "$images_dir"
 mkdir -p "$iso_dir"
 
-boot_drive_path="$images_dir/${boot_drive_url##*/}"
+[ -n "$boot_drive_path" ] || boot_drive_path="$images_dir/${boot_drive_url##*/}"
 iso_path="$iso_dir/${iso_url##*/}"
 
 if [ "$create_boot_drive" -eq 0 ] && [ ! -f "$boot_drive_path" ]; then
