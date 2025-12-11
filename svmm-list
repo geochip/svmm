@@ -11,6 +11,7 @@ show_help()
 
 	Options:
 	  -h, --help			show help and exit
+	  -v, --verbose			print executed commands
 	EOF
 }
 
@@ -20,11 +21,16 @@ fatal()
 	exit 1
 }
 
+verbose=0
 while true; do
 	case "$1" in
 	-h | --help)
 		show_help
 		exit 0
+		;;
+	-v | --verbose)
+		verbose=1
+		shift
 		;;
 	-*)
 		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
@@ -37,6 +43,13 @@ while true; do
 	esac
 done
 
-for vm_name in "$vmm_dir"/*; do
-	echo "${vm_name##*/}"
+[ "$verbose" -eq 0 ] || set -x
+
+for vm_dir in "$vmm_dir"/*; do
+	printf '%s\t' "${vm_dir##*/}"
+	if [ -S "$vm_dir/monitor.socket" ]; then
+		echo "Running"
+	else
+		echo "Stopped"
+	fi
 done

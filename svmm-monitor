@@ -9,11 +9,9 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	shvmm-stop [options] VM_NAME
+	shvmm-monitor [options] VM_NAME
 
 	Options:
-	  -f, --force			forcefully quit the VM
-	  -w, --wait			wait until the qemu process is stopped
 	  -h, --help			show help and exit
 	EOF
 }
@@ -25,21 +23,11 @@ fatal()
 }
 
 vm_name=
-force=0
-wait=0
 while true; do
 	case "$1" in
 	-h | --help)
 		show_help
 		exit 0
-		;;
-	-f | --force)
-		force=1
-		shift
-		;;
-	-w | --wait)
-		wait=1
-		shift
 		;;
 	-*)
 		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
@@ -63,15 +51,7 @@ vm_dir="$vmm_dir/$vm_name"
 monitor_socket_path="$vm_dir/monitor.socket"
 
 [ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
-[ -S "$monitor_socket_path" ] || fatal "VM '$vm_name' is not running"
 
-if [ "$force" -eq 1 ]; then
-	echo 'quit' | socat - "unix:$monitor_socket_path" > /dev/null
-else
-	echo 'system_powerdown' | socat - "unix:$monitor_socket_path" > /dev/null
-	[ -n "$wait" ] || exit
+[ -S "$monitor_socket_path" ] || fatal "monitor socket is not accessible for VM '$vm_name'"
 
-	while [ -S "$monitor_socket_path" ]; do
-		sleep 1
-	done
-fi
+socat - "unix:$monitor_socket_path"

@@ -18,6 +18,7 @@ show_help()
 
 	Options:
 	  --replace			first delete VM with this name if it already exists
+	  --iso-path <path>		attach the ISO at this path to the VM as cdrom
 	  --iso-url <URL>		attach the ISO at this url to the VM as cdrom
 	  --create-boot-drive		create empty qcow2 file as boot drive for the VM
 	  --disk-size <GB>		allocate this much disk space for the boot drive (default: $default_disk_size)
@@ -26,8 +27,10 @@ show_help()
 	  --net-tap <tap>		use QEMU tap networking and connect VM's NIC to tap device with this name
 	  --net-address <IP>		assign this IP address to the VM's network interface
 	  --net-gateway <IP>		use this IP as the default gateway in the VM
+	  --net-dhcp			enable dhcp discovery in VM
 	  --spice			enable and connect to SPICE
 	  --no-cloud-init-drive		don't attach cloud-init drive for NoCloud datasource
+	  --log-serial			redirect serial port to a file
 	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
@@ -42,6 +45,7 @@ fatal()
 vm_name=
 verbose=0
 replace=0
+iso_path_option=
 iso_url=
 create_boot_drive=0
 disk_size=
@@ -50,8 +54,10 @@ second_drive=
 network_tap_device_name=
 network_vm_ip_address=
 network_vm_default_gateway=
+network_vm_dhcp=0
 enable_spice=0
 attach_cloud_init_drive=1
+log_serial=0
 while true; do
 	case "$1" in
 	-h | --help)
@@ -65,6 +71,10 @@ while true; do
 	--replace)
 		replace=1
 		shift
+		;;
+	--iso-path)
+		iso_path_option="$2"
+		shift 2
 		;;
 	--iso-url)
 		iso_url="$2"
@@ -98,12 +108,20 @@ while true; do
 		network_vm_default_gateway="$2"
 		shift 2
 		;;
+	--net-dhcp)
+		network_vm_dhcp=1
+		shift 1
+		;;
 	--spice)
 		enable_spice=1
 		shift
 		;;
 	--no-cloud-init-drive)
 		attach_cloud_init_drive=0
+		shift
+		;;
+	--log-serial)
+		log_serial=1
 		shift
 		;;
 	-*)
@@ -153,7 +171,7 @@ mkdir -p "$images_dir"
 mkdir -p "$iso_dir"
 
 boot_drive_path="$images_dir/${boot_drive_url##*/}"
-iso_path="$iso_dir/${iso_url##*/}"
+[ -n "$iso_path" ] || iso_path="$iso_dir/${iso_url##*/}"
 
 if [ "$create_boot_drive" -eq 0 ] && [ ! -f "$boot_drive_path" ]; then
 	echo "Downloading boot drive image from '$boot_drive_url'" >&2
@@ -200,31 +218,47 @@ if [ "$network_type" = 'user' ]; then
 	cloud-localds "$vm_cloud_init_drive_path" "$user_data_path"
 else
 	network_config_path="$vm_dir/network.yaml"
-	cat <<-EOF > "$network_config_path"
-	version: 2
-	ethernets:
-	  interface0:
-	    match:
-	      name: "e*"
-	    addresses:
-	      - $network_vm_ip_address
-	    routes:
-	      - to: 0.0.0.0/0
-	        via: $network_vm_default_gateway
-	    nameservers:
-	      addresses:
-	        - 8.8.8.8
-	EOF
+
+	if [ "$network_vm_dhcp" ]; then
+		cat <<-EOF > "$network_config_path"
+		version: 2
+		ethernets:
+		  interface0:
+		    match:
+		      name: "e*"
+		    dhcp4: true
+		EOF
+	else
+		cat <<-EOF > "$network_config_path"
+		version: 2
+		ethernets:
+		  interface0:
+		    match:
+		      name: "e*"
+		    addresses:
+		      - $network_vm_ip_address
+		    routes:
+		      - to: 0.0.0.0/0
+			via: $network_vm_default_gateway
+		    nameservers:
+		      addresses:
+			- 8.8.8.8
+		EOF
+	fi
+
 	cloud-localds --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
 fi
+
+vm_uuid="$(uuidgen)"
+echo "vm_uuid=$vm_uuid" >> "$vm_config_path"
 
 set -- -name "$vm_name" \
 	-accel kvm \
 	-cpu host \
 	-m 2G \
 	-smp 2 \
-	-display none \
 	-daemonize \
+	-smbios "type=1,uuid=$vm_uuid" \
 	-monitor "unix:${monitor_socket_path},server=on,wait=off" \
 	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \
 	-device virtio-blk-pci,drive=disk1
@@ -243,8 +277,7 @@ if [ -n "$second_drive" ]; then
 		-device virtio-blk-pci,drive=disk2
 fi
 
-if [ -n "$iso_url" ]; then
-	# set -- "$@" -cdrom "$iso_path"
+if [ -n "$iso_path_option" ] || [ -n "$iso_url" ]; then
 	set -- "$@" -blockdev "node-name=cdrom1,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
 		-device ide-cd,drive=cdrom1
 fi
@@ -274,6 +307,13 @@ if [ "$enable_spice" -eq 1 ]; then
 	echo "enable_spice=$enable_spice" >> "$vm_config_path"
 
 	set -- "$@" -display spice-app
+fi
+
+echo "log_serial=$log_serial" >> "$vm_config_path"
+
+if [ "$log_serial" -eq 1 ]; then
+	qemu_serial_log_path="$vm_dir/serial.log"
+	set -- "$@" -serial "file:$qemu_serial_log_path"
 fi
 
 qemu-system-x86_64 "$@"
