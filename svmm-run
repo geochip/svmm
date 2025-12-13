@@ -219,7 +219,7 @@ if [ "$network_type" = 'user' ]; then
 else
 	network_config_path="$vm_dir/network.yaml"
 
-	if [ "$network_vm_dhcp" ]; then
+	if [ "$network_vm_dhcp" -eq 1 ]; then
 		cat <<-EOF > "$network_config_path"
 		version: 2
 		ethernets:
@@ -239,10 +239,10 @@ else
 		      - $network_vm_ip_address
 		    routes:
 		      - to: 0.0.0.0/0
-			via: $network_vm_default_gateway
+		        via: $network_vm_default_gateway
 		    nameservers:
 		      addresses:
-			- 8.8.8.8
+		        - 8.8.8.8
 		EOF
 	fi
 
