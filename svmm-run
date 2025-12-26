@@ -302,11 +302,12 @@ if [ "$network_type" = 'tap' ]; then
 fi
 
 echo "vm_mac_address=$vm_mac_address" >> "$vm_config_path"
+echo "enable_spice=$enable_spice" >> "$vm_config_path"
 
 if [ "$enable_spice" -eq 1 ]; then
-	echo "enable_spice=$enable_spice" >> "$vm_config_path"
-
 	set -- "$@" -display spice-app
+else
+	set -- "$@" -display none
 fi
 
 echo "log_serial=$log_serial" >> "$vm_config_path"
