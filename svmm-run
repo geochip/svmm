@@ -25,7 +25,7 @@ show_help()
 	  --boot-drive-url <URL>	use qcow2 file at this url as boot image (default: $default_boot_drive_url)
 	  --second-drive <path>		path to qcow2 file to attach another drive to the VM
 	  --net-tap <tap>		use QEMU tap networking and connect VM's NIC to tap device with this name
-	  --net-address <IP>		assign this IP address to the VM's network interface
+	  --net-address-cidr <IP-CIDR>	assign this IP address and network mask to the VM's network interface
 	  --net-gateway <IP>		use this IP as the default gateway in the VM
 	  --net-dhcp			enable dhcp discovery in VM
 	  --spice			enable and connect to SPICE
@@ -52,7 +52,7 @@ disk_size=
 boot_drive_url=
 second_drive=
 network_tap_device_name=
-network_vm_ip_address=
+network_vm_ip_address_cidr=
 network_vm_default_gateway=
 network_vm_dhcp=0
 enable_spice=0
@@ -100,8 +100,8 @@ while true; do
 		network_tap_device_name="$2"
 		shift 2
 		;;
-	--net-address)
-		network_vm_ip_address="$2"
+	--net-address-cidr)
+		network_vm_ip_address_cidr="$2"
 		shift 2
 		;;
 	--net-gateway)
@@ -236,7 +236,7 @@ else
 		    match:
 		      name: "e*"
 		    addresses:
-		      - $network_vm_ip_address
+		      - $network_vm_ip_address_cidr
 		    routes:
 		      - to: 0.0.0.0/0
 		        via: $network_vm_default_gateway
