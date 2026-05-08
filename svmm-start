@@ -13,6 +13,7 @@ show_help()
 
 	Options:
 	  --iso-path <path>		attach the ISO at this path to the VM as cdrom
+	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
 }
@@ -25,6 +26,7 @@ fatal()
 
 vm_name=
 iso_path=
+verbose=0
 while true; do
 	case "$1" in
 	--iso-path)
@@ -34,6 +36,10 @@ while true; do
 	-h | --help)
 		show_help
 		exit 0
+		;;
+	-v | --verbose)
+		verbose=1
+		shift
 		;;
 	-*)
 		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
@@ -50,6 +56,8 @@ while true; do
 		;;
 	esac
 done
+
+[ "$verbose" -eq 0 ] || set -x
 
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 
