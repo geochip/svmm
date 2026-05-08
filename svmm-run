@@ -194,66 +194,67 @@ else
 	qemu-img create -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a new empty boot drive for '$vm_name'"
 fi
 
-ssh_key_path="$vm_dir/id_ed25519"
-
-ssh-keygen -t ed25519 -f "$ssh_key_path" -N '' > /dev/null
-
-pub_ssh_key_path="${ssh_key_path}.pub"
-pub_ssh_key="$(cat "$pub_ssh_key_path")"
-
-user_data_path="$vm_dir/user-data.yaml"
-
-cat <<EOF > "$user_data_path"
-#cloud-config
-disable_root: false
-users:
-  - name: root
-    lock_passwd: false
-    plain_text_passwd: "123"
-    ssh_authorized_keys:
-      - ${pub_ssh_key}
-preserve_hostname: false
-hostname: ${vm_name}
-EOF
-
 network_type='user'
 [ -n "$network_tap_device_name" ] && network_type='tap'
 
 echo "network_type=$network_type" >> "$vm_config_path"
 
-if [ "$network_type" = 'user' ]; then
-	cloud-localds "$vm_cloud_init_drive_path" "$user_data_path"
-else
-	network_config_path="$vm_dir/network.yaml"
+if [ "$attach_cloud_init_drive" -eq 1 ]; then
+	ssh_key_path="$vm_dir/id_ed25519"
 
-	if [ "$network_vm_dhcp" -eq 1 ]; then
-		cat <<-EOF > "$network_config_path"
-		version: 2
-		ethernets:
-		  interface0:
-		    match:
-		      name: "e*"
-		    dhcp4: true
-		EOF
+	ssh-keygen -t ed25519 -f "$ssh_key_path" -N '' > /dev/null
+
+	pub_ssh_key_path="${ssh_key_path}.pub"
+	pub_ssh_key="$(cat "$pub_ssh_key_path")"
+
+	user_data_path="$vm_dir/user-data.yaml"
+
+	cat <<-EOF > "$user_data_path"
+	#cloud-config
+	disable_root: false
+	users:
+	  - name: root
+	    lock_passwd: false
+	    plain_text_passwd: "123"
+	    ssh_authorized_keys:
+	      - ${pub_ssh_key}
+	hostname: ${vm_name}
+	EOF
+
+	if [ "$network_type" = 'user' ]; then
+		cloud-localds "$vm_cloud_init_drive_path" "$user_data_path"
 	else
-		cat <<-EOF > "$network_config_path"
-		version: 2
-		ethernets:
-		  interface0:
-		    match:
-		      name: "e*"
-		    addresses:
-		      - $network_vm_ip_address_cidr
-		    routes:
-		      - to: 0.0.0.0/0
-		        via: $network_vm_default_gateway
-		    nameservers:
-		      addresses:
-		        - 8.8.8.8
-		EOF
-	fi
+		network_config_path="$vm_dir/network.yaml"
 
-	cloud-localds --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
+		if [ "$network_vm_dhcp" -eq 1 ]; then
+			cat <<-EOF > "$network_config_path"
+			version: 2
+			ethernets:
+			  interface0:
+			    match:
+			      name: "e*"
+			    dhcp4: true
+			EOF
+		else
+			cat <<-EOF > "$network_config_path"
+			version: 2
+			ethernets:
+			  interface0:
+			    match:
+			      name: "e*"
+			    addresses:
+			      - $network_vm_ip_address_cidr
+			    routes:
+			      - to: 0.0.0.0/0
+			        via: $network_vm_default_gateway
+			    nameservers:
+			      addresses:
+			        - 8.8.8.8
+			EOF
+		fi
+
+		cloud-localds --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
+	fi
 fi
 
 vm_uuid="$(uuidgen)"
