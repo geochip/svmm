@@ -9,7 +9,7 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	shvmm-monitor [options] VM_NAME
+	svmm-monitor [options] VM_NAME
 
 	Options:
 	  -h, --help			show help and exit

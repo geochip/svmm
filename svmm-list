@@ -7,7 +7,7 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	shvmm-list [options]
+	svmm-list [options]
 
 	Options:
 	  -h, --help			show help and exit

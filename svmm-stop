@@ -9,7 +9,7 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	shvmm-stop [options] VM_NAME
+	svmm-stop [options] VM_NAME
 
 	Options:
 	  -f, --force			forcefully quit the VM

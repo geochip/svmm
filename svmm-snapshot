@@ -9,7 +9,7 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	shvmm-snapshot [options] VM_NAME SNAPSHOT_NAME
+	svmm-snapshot [options] VM_NAME SNAPSHOT_NAME
 
 	Options:
 	  -v, --verbose			print executed commands

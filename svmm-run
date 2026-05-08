@@ -14,7 +14,7 @@ default_disk_size='10G'
 show_help()
 {
 	cat <<-EOF
-	shvmm-run [options] VM_NAME
+	svmm-run [options] VM_NAME
 
 	Options:
 	  --replace			first delete VM with this name if it already exists

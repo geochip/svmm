@@ -9,7 +9,7 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	shvmm-rm [options] VM_NAME
+	svmm-rm [options] VM_NAME
 
 	Options:
 	  -f, --force			remove VM even if it is currently running

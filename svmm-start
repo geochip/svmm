@@ -9,7 +9,7 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	shvmm-start [options] VM_NAME
+	svmm-start [options] VM_NAME
 
 	Options:
 	  --iso-path <path>		attach the ISO at this path to the VM as cdrom
