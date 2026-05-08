@@ -291,7 +291,7 @@ if [ -n "$second_drive" ]; then
 fi
 
 if [ -n "$iso_path_option" ] || [ -n "$iso_url" ]; then
-	set -- "$@" -blockdev "node-name=cdrom1,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
+	set -- "$@" -blockdev "node-name=cdrom1,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path_option" \
 		-device ide-cd,drive=cdrom1
 fi
 
