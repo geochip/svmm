@@ -14,6 +14,7 @@ show_help()
 	Options:
 	  -f, --force			forcefully quit the VM
 	  -w, --wait			wait until the qemu process is stopped
+	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
 }
@@ -27,8 +28,13 @@ fatal()
 vm_name=
 force=0
 wait=0
+verbose=0
 while true; do
 	case "$1" in
+	-v | --verbose)
+		verbose=1
+		shift
+		;;
 	-h | --help)
 		show_help
 		exit 0
@@ -56,6 +62,8 @@ while true; do
 		;;
 	esac
 done
+
+[ "$verbose" -eq 0 ] || set -x
 
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 
