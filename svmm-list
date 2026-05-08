@@ -10,8 +10,10 @@ show_help()
 	svmm-list [options]
 
 	Options:
-	  -h, --help			show help and exit
+	  --no-status			don't show vm running status
+	  --color <mode>		color output mode (auto, always, never), default: auto
 	  -v, --verbose			print executed commands
+	  -h, --help			show help and exit
 	EOF
 }
 
@@ -22,15 +24,26 @@ fatal()
 }
 
 verbose=0
+show_status=1
+color_option=auto
 while true; do
 	case "$1" in
-	-h | --help)
-		show_help
-		exit 0
+	--no-status)
+		show_status=0
+		shift
+		;;
+	--color)
+		[ "$#" -ge 2 ] || fatal 'Not enough arguments: --color'
+		color_option=$2
+		shift 2
 		;;
 	-v | --verbose)
 		verbose=1
 		shift
+		;;
+	-h | --help)
+		show_help
+		exit 0
 		;;
 	-*)
 		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
@@ -46,10 +59,41 @@ done
 [ "$verbose" -eq 0 ] || set -x
 
 for vm_dir in "$vmm_dir"/*; do
-	printf '%s\t' "${vm_dir##*/}"
-	if [ -S "$vm_dir/monitor.socket" ]; then
-		echo "Running"
+	[ -d "$vm_dir" ] || continue
+
+	vm_name="${vm_dir##*/}"
+
+	printf '%-30s ' "$vm_name"
+
+	if [ "$show_status" -eq 1 ]; then
+		enable_color=0
+		case "$color_option" in
+			'auto')
+				[ -t 0 ] && enable_color=1 || enable_color=0
+				;;
+			'always')
+				enable_color=1
+				;;
+			'never')
+				enable_color=0
+				;;
+		esac
+		status=
+		color=
+		if svmm-is-qemu-running "$vm_name"; then
+			status='Running'
+			color='\e[0;32m'
+		else
+			status='Stopped'
+			color='\e[0;31m'
+		fi
+
+		if [ "$enable_color" -eq 1 ]; then
+			printf '%b%s\e[0m\n' "$color" "$status"
+		else
+			printf '%s\n' "$status"
+		fi
 	else
-		echo "Stopped"
+		echo ''
 	fi
 done
