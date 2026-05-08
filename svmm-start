@@ -86,6 +86,10 @@ set -- -name "$vm_name" \
 	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \
 	-device virtio-blk-pci,drive=disk1
 
+if [ -n "$vnc" ]; then
+	set -- "$@" -vnc "$vnc"
+fi
+
 if [ -n "$iso_path" ]; then
 	set -- "$@" -blockdev "node-name=cdrom1,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
 		-device ide-cd,drive=cdrom1

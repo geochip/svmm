@@ -29,6 +29,7 @@ show_help()
 	  --net-gateway <IP>		use this IP as the default gateway in the VM
 	  --net-dhcp			enable dhcp discovery in VM
 	  --spice			enable and connect to SPICE
+	  --vnc <number>		enable and start vnc server on port 5900+<number>
 	  --no-cloud-init-drive		don't attach cloud-init drive for NoCloud datasource
 	  --log-serial			redirect serial port to a file
 	  -v, --verbose			print executed commands
@@ -56,6 +57,7 @@ network_vm_ip_address_cidr=
 network_vm_default_gateway=
 network_vm_dhcp=0
 enable_spice=0
+vnc=
 attach_cloud_init_drive=1
 log_serial=0
 while true; do
@@ -116,6 +118,10 @@ while true; do
 		enable_spice=1
 		shift
 		;;
+       --vnc)
+               vnc="$2"
+               shift 2
+               ;;
 	--no-cloud-init-drive)
 		attach_cloud_init_drive=0
 		shift
@@ -264,6 +270,11 @@ set -- -name "$vm_name" \
 	-monitor "unix:${monitor_socket_path},server=on,wait=off" \
 	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \
 	-device virtio-blk-pci,drive=disk1
+
+if [ -n "$vnc" ]; then
+	echo "vnc=$vnc" >> "$vm_config_path"
+	set -- "$@" -vnc "$vnc"
+fi
 
 if [ "$attach_cloud_init_drive" -eq 1 ]; then
 	set -- "$@" -blockdev "node-name=cloud-init-drive,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=${vm_cloud_init_drive_path}" \
