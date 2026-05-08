@@ -73,6 +73,6 @@ vm_disk_path="$vm_dir/disk.qcow2"
 
 qemu-img snapshot -c "$snapshot_name" "$vm_disk_path"
 
-if [ -n "${second_drive:?}" ]; then
+if [ -n "${second_drive}" ]; then
 	qemu-img snapshot -c "$snapshot_name" "$second_drive"
 fi
