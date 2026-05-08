@@ -189,7 +189,7 @@ elif [ "$create_boot_drive" -eq 1 ] && [ -n "$iso_url" ] && [ ! -f "$iso_path" ]
 fi
 
 if [ "$create_boot_drive" -eq 0 ]; then
-	qemu-img create -b "$boot_drive_path" -F qcow2 -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
+	qemu-img create -b "$boot_drive_path" -B qcow2 -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
 else
 	qemu-img create -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a new empty boot drive for '$vm_name'"
 fi
