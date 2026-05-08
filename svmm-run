@@ -149,6 +149,7 @@ done
 vm_dir="$vmm_dir/$vm_name"
 vm_config_path="$vm_dir/vmm.conf"
 monitor_socket_path="$vm_dir/monitor.socket"
+qemu_pid_file_path="$vm_dir/qemu_pid"
 
 if [ -d "$vm_dir" ]; then
 	[ "$replace" -eq 1 ] || fatal "VM '$vm_name' already exists"
@@ -258,6 +259,7 @@ set -- -name "$vm_name" \
 	-m 2G \
 	-smp 2 \
 	-daemonize \
+	-pidfile "$qemu_pid_file_path" \
 	-smbios "type=1,uuid=$vm_uuid" \
 	-monitor "unix:${monitor_socket_path},server=on,wait=off" \
 	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \

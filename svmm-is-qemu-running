@@ -1,0 +1,63 @@
+#!/usr/bin/env sh
+
+PROG="${0##*/}"
+
+vmm_dir="$HOME/vmm"
+
+show_help()
+{
+	cat <<-EOF
+	svmm-is-qemu-running [options] VM_NAME
+
+	Options:
+	  -v, --verbose			print executed commands
+	  -h, --help			show help and exit
+	EOF
+}
+
+fatal()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+	exit 1
+}
+
+vm_name=
+verbose=0
+while true; do
+	case "$1" in
+	-v | --verbose)
+		verbose=1
+		shift
+		;;
+	-h | --help)
+		show_help
+		exit 0
+		;;
+	-*)
+		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
+		show_help
+		exit 1
+		;;
+	*)
+		if [ -n "$1" ]; then
+			vm_name="$1"
+			shift
+		else
+			break
+		fi
+		;;
+	esac
+done
+
+[ "$verbose" -eq 0 ] || set -x
+
+[ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
+
+vm_dir="$vmm_dir/$vm_name"
+
+qemu_pid_file_path="$vm_dir/qemu_pid"
+read -r qemu_pid  2> /dev/null < "$qemu_pid_file_path"
+
+[ -S "$vm_dir/monitor.socket" ] && [ -s "$qemu_pid_file_path" ] && [ -n "$qemu_pid" ] && ps -p "$qemu_pid" -o 'pid=' > /dev/null && exit
+
+exit 1
