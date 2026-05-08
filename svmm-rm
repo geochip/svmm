@@ -1,7 +1,5 @@
 #!/usr/bin/env sh
 
-set -f
-
 PROG="${0##*/}"
 
 vmm_dir="$HOME/vmm"
@@ -9,10 +7,12 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	svmm-rm [options] VM_NAME
+	svmm-rm [options] [VM_NAME]
 
 	Options:
+	  -a, --all			remove all VMs
 	  -f, --force			remove VM even if it is currently running
+	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
 }
@@ -23,17 +23,32 @@ fatal()
 	exit 1
 }
 
+error()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+}
+
 vm_name=
-force=
+all=0
+force=0
+verbose=0
 while true; do
 	case "$1" in
-	-f | --force)
-		force=1
+	-v | --verbose)
+		verbose=1
 		shift
 		;;
 	-h | --help)
 		show_help
 		exit 0
+		;;
+	-a | --all)
+		all=1
+		shift
+		;;
+	-f | --force)
+		force=1
+		shift
 		;;
 	-*)
 		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
@@ -51,6 +66,24 @@ while true; do
 	esac
 done
 
+[ "$verbose" -eq 0 ] || set -x
+
+if [ "$all" -eq 1 ]; then
+	for vm_dir in "$vmm_dir"/*; do
+		[ -d "$vm_dir" ] || continue
+
+		vm_name="${vm_dir##*/}"
+
+		if svmm-is-qemu-running "$vm_name"; then
+			[ -n "$force" ] || error "Cannot remove VM '$vm_name' - as it is running" && continue
+			printf "quit\n" | socat - "unix:$monitor_socket_path" > /dev/null
+		fi
+
+		rm -rf "$vm_dir"
+	done
+	exit
+fi
+
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 
 vm_dir="$vmm_dir/$vm_name"
@@ -58,7 +91,7 @@ monitor_socket_path="$vm_dir/monitor.socket"
 
 [ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
 
-if [ -S "$monitor_socket_path" ]; then
+if svmm-is-qemu-running "$vm_name"; then
 	[ -n "$force" ] || fatal "$vm_name is running"
 	printf "quit\n" | socat - "unix:$monitor_socket_path" > /dev/null
 fi
