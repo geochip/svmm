@@ -1,0 +1,63 @@
+#!/usr/bin/env sh
+
+set -f
+
+PROG="${0##*/}"
+
+show_help()
+{
+	cat <<-EOF
+	svmm [global-options] <command> [command-specific-options]
+
+	Commands:
+	  run			create and start a qemu virtual machine
+	  start			start a qemu virtual machine
+	  stop			stop a qemu virtual machine
+	  list			list existing qemu virtual machines
+	  rm			remove a qemu virtual machine data
+	  ssh			connect to a qemu virtual machine through ssh
+	  monitor		list existing qemu virtual machines
+	  snapshot		make a qemu snapshot of the current virtual machine state
+
+	Global options:
+	  -v, --verbose		print executed commands
+	  -h, --help		show help and exit
+	EOF
+}
+
+fatal()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+	exit 1
+}
+
+command=
+verbose=0
+while true; do
+	case "$1" in
+	-v | --verbose)
+		verbose=1
+		shift
+		;;
+	-h | --help)
+		show_help
+		exit 0
+		;;
+	-*)
+		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
+		show_help
+		exit 1
+		;;
+	*)
+		if [ -n "$1" ]; then
+			command="$1"
+			shift
+		fi
+		break
+		;;
+	esac
+done
+
+[ "$verbose" -eq 0 ] || set -x
+
+exec "svmm-$command" "$@"
