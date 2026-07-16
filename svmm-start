@@ -4,6 +4,8 @@ set -f
 
 PROG="${0##*/}"
 
+ovmf_dir='/usr/share/OVMF'
+
 vmm_dir="$HOME/vmm"
 
 show_help()
@@ -13,6 +15,7 @@ show_help()
 
 	Options:
 	  --iso-path <path>		attach the ISO at this path to the VM as cdrom
+	  --gtk				use gtk GUI for VM output
 	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
@@ -27,6 +30,7 @@ fatal()
 vm_name=
 iso_path=
 verbose=0
+display_gtk=0
 while true; do
 	case "$1" in
 	--iso-path)
@@ -39,6 +43,10 @@ while true; do
 		;;
 	-v | --verbose)
 		verbose=1
+		shift
+		;;
+	--gtk)
+		display_gtk=1
 		shift
 		;;
 	-*)
@@ -76,12 +84,14 @@ vm_config_path="$vm_dir/vmm.conf"
 set -- -name "$vm_name" \
 	-accel kvm \
 	-cpu host \
-	-m 2G \
-	-smp 2 \
+	-m "${memory:?}" \
+	-smp "${cores:?}" \
 	-daemonize \
+	-nodefaults \
 	-pidfile "$qemu_pid_file_path" \
 	-smbios "type=1,uuid=${vm_uuid:?}" \
-	-monitor "unix:${monitor_socket_path},server=on,wait=off" \
+	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
+	-mon chardev=qmp,mode=control,pretty=off \
 	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \
 	-device virtio-blk-pci,drive=disk1
 
@@ -117,6 +127,8 @@ fi
 
 if [ "${enable_spice:?}" -eq 1 ]; then
 	set -- "$@" -display spice-app
+elif [ "$display_gtk" -eq 1 ]; then
+	set -- "$@" -display gtk -device VGA
 else
 	set -- "$@" -display none
 fi
@@ -132,6 +144,33 @@ if [ "${log_serial:?}" -eq 1 ]; then
 		done
 	fi
 	set -- "$@" -serial "file:$qemu_serial_log_path.$((existing_logs + 1))"
+fi
+
+if [ "${enable_tpm:?}" -eq 1 ]; then
+	mkdir -p "$XDG_RUNTIME_DIR/swtpm"
+	mkdir -p "$vm_dir/tpm2"
+	swtpm socket \
+		--ctrl "type=unixio,path=$XDG_RUNTIME_DIR/swtpm/$vm_name-swtpm.sock,mode=0600" \
+		--tpmstate "dir=$vm_dir/tpm2,mode=0600,lock" \
+		--log "file=$vm_dir/$vm_name-swtpm.log" \
+		--terminate \
+		--tpm2 &
+
+	set -- "$@" -chardev "socket,id=chrtpm,path=$XDG_RUNTIME_DIR/swtpm/$vm_name-swtpm.sock" \
+		-tpmdev emulator,id=tpm0,chardev=chrtpm \
+		-device tpm-crb,tpmdev=tpm0
+fi
+
+if [ "${enable_qemu_guest_agent:?}" -eq 1 ]; then
+	set -- "$@" -chardev "socket,path=$vm_dir/qemu_guest_agent.sock,server=on,wait=off,id=qga0" \
+		-device virtio-serial \
+		-device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0
+fi
+
+if [ "${uefi:?}" -eq 1 ]; then
+	set -- "$@" -machine q35 \
+		-drive "if=pflash,format=qcow2,readonly=on,file=$ovmf_dir/OVMF_CODE_4M.secboot.qcow2" \
+		-drive "if=pflash,format=qcow2,file=$vm_dir/OVMF_VARS_4M.qcow2"
 fi
 
 qemu-system-x86_64 "$@"

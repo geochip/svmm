@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+
+set -efux
+
+# Static net
+
+ip link add dev svmmstaticbr0 type bridge
+ip link set dev svmmstaticbr0 up
+ip addr add 172.16.1.1/24 dev svmmstaticbr0
+
+ip tuntap add dev svmmstatictap0 mode tap
+ip tuntap add dev svmmstatictap1 mode tap
+ip tuntap add dev svmmstatictap2 mode tap
+
+ip link set dev svmmstatictap0 master svmmstaticbr0 up
+ip link set dev svmmstatictap1 master svmmstaticbr0 up
+ip link set dev svmmstatictap2 master svmmstaticbr0 up
+
+# Dynamic net (using dhcp)
+
+ip link add dev svmmdynamicbr0 type bridge
+ip link set dev svmmdynamicbr0 up
+ip addr add 172.16.2.1/24 dev svmmdynamicbr0
+
+ip tuntap add dev svmmdynamictap0 mode tap
+ip tuntap add dev svmmdynamictap1 mode tap
+ip tuntap add dev svmmdynamictap2 mode tap
+
+ip link set dev svmmdynamictap0 master svmmdynamicbr0 up
+ip link set dev svmmdynamictap1 master svmmdynamicbr0 up
+ip link set dev svmmdynamictap2 master svmmdynamicbr0 up
+
+# Routing
+
+nft create table svmm_network
+nft create chain svmm_network guest_nat \{ type nat hook postrouting priority srcnat \; \}
+nft add rule svmm_network guest_nat ip saddr 172.16.1.0/24 counter masquerade
+nft add rule svmm_network guest_nat ip saddr 172.16.2.0/24 counter masquerade

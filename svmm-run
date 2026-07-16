@@ -4,12 +4,16 @@ set -f
 
 PROG="${0##*/}"
 
+ovmf_dir='/usr/share/OVMF'
+
 vmm_dir="$HOME/vmm"
 images_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/images"
 iso_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/iso"
 
 default_boot_drive_url='https://ftp.altlinux.org/pub/distributions/ALTLinux/images/Sisyphus/cloud/x86_64/alt-sisyphus-cloud-x86_64.qcow2'
 default_disk_size='10G'
+default_memory='2G'
+default_cores='2'
 
 show_help()
 {
@@ -17,6 +21,10 @@ show_help()
 	svmm-run [options] VM_NAME
 
 	Options:
+	  --memory <MEM>		sets guest RAM size to MEM (default: $default_memory)
+	  --cores <NUM>			sets the number of CPUs to NUM (default: $default_cores)
+	  --kvm				enable hardware accelaration using KVM
+	  --cpu <CPU>			emulate selected CPU
 	  --replace			first delete VM with this name if it already exists
 	  --iso-path <path>		attach the ISO at this path to the VM as cdrom
 	  --iso-url <URL>		attach the ISO at this url to the VM as cdrom
@@ -29,9 +37,18 @@ show_help()
 	  --net-gateway <IP>		use this IP as the default gateway in the VM
 	  --net-dhcp			enable dhcp discovery in VM
 	  --spice			enable and connect to SPICE
+	  --gtk				use gtk GUI for VM output
 	  --vnc <number>		enable and start vnc server on port 5900+<number>
 	  --no-cloud-init-drive		don't attach cloud-init drive for NoCloud datasource
 	  --log-serial			redirect serial port to a file
+	  --uefi			use UEFI (OVMF) instead of legacy BIOS (SeaBIOS)
+	  --uefi-empty-varstore		use empty OVMF_VARS file (no secure boot keys enrolled)
+	  --guest-agent			enable qemu guest agent support for this VM
+	  --kernel <PATH>		boot the kernel at PATH directly
+	  --initramfs <PATH>		use initramfs at PATH when direct kernel booting
+	  --append-cmdline <CMDLINE>	use CMDLINE as the kernel command line
+	  --gdb				enable gdb server
+	  --dry-run			print qemu command, which would be run, but don't actually run qemu
 	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
@@ -45,6 +62,10 @@ fatal()
 
 vm_name=
 verbose=0
+memory=
+cores=
+enable_kvm=0
+cpu=
 replace=0
 iso_path_option=
 iso_url=
@@ -57,9 +78,19 @@ network_vm_ip_address_cidr=
 network_vm_default_gateway=
 network_vm_dhcp=0
 enable_spice=0
+display_gtk=0
 vnc=
 attach_cloud_init_drive=1
 log_serial=0
+uefi=0
+uefi_empty_varstore=0
+enable_tpm=0
+enable_qemu_guest_agent=0
+kernel_path=
+initramfs_path=
+append_cmdline=
+enable_gdb=0
+dry_run=0
 while true; do
 	case "$1" in
 	-h | --help)
@@ -69,6 +100,22 @@ while true; do
 	-v | --verbose)
 		verbose=1
 		shift
+		;;
+	--memory)
+		memory="$2"
+		shift 2
+		;;
+	--cores)
+		cores="$2"
+		shift 2
+		;;
+	--kvm)
+		enable_kvm=1
+		shift
+		;;
+	--cpu)
+		cpu="$2"
+		shift 2
 		;;
 	--replace)
 		replace=1
@@ -118,6 +165,10 @@ while true; do
 		enable_spice=1
 		shift
 		;;
+	--gtk)
+		display_gtk=1
+		shift
+		;;
        --vnc)
                vnc="$2"
                shift 2
@@ -128,6 +179,42 @@ while true; do
 		;;
 	--log-serial)
 		log_serial=1
+		shift
+		;;
+	--uefi)
+		uefi=1
+		shift
+		;;
+	--uefi-empty-varstore)
+		uefi_empty_varstore=1
+		shift
+		;;
+	--tpm)
+		enable_tpm=1
+		shift
+		;;
+	--guest-agent)
+		enable_qemu_guest_agent=1
+		shift
+		;;
+	--kernel)
+		kernel_path="$2"
+		shift 2
+		;;
+	--initramfs)
+		initramfs_path="$2"
+		shift 2
+		;;
+	--append-cmdline)
+		append_cmdline="$2"
+		shift 2
+		;;
+	--gdb)
+		enable_gdb=1
+		shift
+		;;
+	--dry-run)
+		dry_run=1
 		shift
 		;;
 	-*)
@@ -150,6 +237,8 @@ done
 
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 [ -n "$boot_drive_url" ] || boot_drive_url="$default_boot_drive_url"
+[ -n "$memory" ] || memory="$default_memory"
+[ -n "$cores" ] || cores="$default_cores"
 [ -n "$disk_size" ] || disk_size="$default_disk_size"
 
 vm_dir="$vmm_dir/$vm_name"
@@ -161,7 +250,7 @@ if [ -d "$vm_dir" ]; then
 	[ "$replace" -eq 1 ] || fatal "VM '$vm_name' already exists"
 
 	if [ -S "$monitor_socket_path" ]; then
-		printf "quit\n" | socat - "unix:$monitor_socket_path" > /dev/null
+		{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "quit"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
 	fi
 
 	rm -rf "$vm_dir"
@@ -178,14 +267,14 @@ mkdir -p "$images_dir"
 mkdir -p "$iso_dir"
 
 boot_drive_path="$images_dir/${boot_drive_url##*/}"
-[ -n "$iso_path" ] || iso_path="$iso_dir/${iso_url##*/}"
+{ [ -n "$iso_path_option" ] && iso_path=$iso_path_option; } || { [ -n "$iso_url" ] && iso_path=$iso_dir/${iso_url##*/}; }
 
 if [ "$create_boot_drive" -eq 0 ] && [ ! -f "$boot_drive_path" ]; then
 	echo "Downloading boot drive image from '$boot_drive_url'" >&2
 	curl "$boot_drive_url" --output "$boot_drive_path" --fail --location || fatal "Failed to download the boot drive image '$boot_drive_url'"
-elif [ "$create_boot_drive" -eq 1 ] && [ -n "$iso_url" ] && [ ! -f "$iso_path" ]; then
+elif [ "$create_boot_drive" -eq 1 ] && [ -n "$iso_url" ] && [ ! -f "${iso_path:?}" ]; then
 	echo "Downloading ISO from '$iso_url'" >&2
-	curl "$iso_url" --output "$iso_path" --fail --location || fatal "Failed to download the ISO '$boot_drive_url'"
+	curl "$iso_url" --output "${iso_path:?}" --fail --location || fatal "Failed to download the ISO '$boot_drive_url'"
 fi
 
 if [ "$create_boot_drive" -eq 0 ]; then
@@ -194,8 +283,10 @@ else
 	qemu-img create -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a new empty boot drive for '$vm_name'"
 fi
 
-network_type='user'
-[ -n "$network_tap_device_name" ] && network_type='tap'
+echo "memory=$memory" >> "$vm_config_path"
+echo "cores=$cores" >> "$vm_config_path"
+
+[ -n "$network_tap_device_name" ] && network_type='tap' || network_type='user'
 
 echo "network_type=$network_type" >> "$vm_config_path"
 
@@ -243,10 +334,10 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 			    match:
 			      name: "e*"
 			    addresses:
-			      - $network_vm_ip_address_cidr
+			      - ${network_vm_ip_address_cidr:?}
 			    routes:
 			      - to: 0.0.0.0/0
-			        via: $network_vm_default_gateway
+			        via: ${network_vm_default_gateway:?}
 			    nameservers:
 			      addresses:
 			        - 8.8.8.8
@@ -261,16 +352,29 @@ vm_uuid="$(uuidgen)"
 echo "vm_uuid=$vm_uuid" >> "$vm_config_path"
 
 set -- -name "$vm_name" \
-	-accel kvm \
-	-cpu host \
-	-m 2G \
-	-smp 2 \
+	-m "$memory" \
+	-smp "$cores" \
 	-daemonize \
+	-nodefaults \
 	-pidfile "$qemu_pid_file_path" \
 	-smbios "type=1,uuid=$vm_uuid" \
-	-monitor "unix:${monitor_socket_path},server=on,wait=off" \
+	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
+	-mon chardev=qmp,mode=control,pretty=off \
 	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \
 	-device virtio-blk-pci,drive=disk1
+
+echo "kvm=$enable_kvm" >> "$vm_config_path"
+
+if [ "$enable_kvm" -eq 1 ]; then
+	set -- "$@" -accel kvm
+fi
+
+if [ -n "$cpu" ]; then
+	echo "cpu=$cpu" >> "$vm_config_path"
+	set -- "$@" -cpu "$cpu"
+else
+	echo "cpu=''" >> "$vm_config_path"
+fi
 
 if [ -n "$vnc" ]; then
 	echo "vnc=$vnc" >> "$vm_config_path"
@@ -292,8 +396,8 @@ if [ -n "$second_drive" ]; then
 fi
 
 if [ -n "$iso_path_option" ] || [ -n "$iso_url" ]; then
-	set -- "$@" -blockdev "node-name=cdrom1,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path_option" \
-		-device ide-cd,drive=cdrom1
+	set -- "$@" -blockdev "node-name=cdrom1-drive,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
+		-device ide-cd,id=cdrom1,drive=cdrom1-drive
 fi
 
 if [ "$network_type" = 'user' ]; then
@@ -320,6 +424,8 @@ echo "enable_spice=$enable_spice" >> "$vm_config_path"
 
 if [ "$enable_spice" -eq 1 ]; then
 	set -- "$@" -display spice-app
+elif [ "$display_gtk" -eq 1 ]; then
+	set -- "$@" -display gtk -device VGA
 else
 	set -- "$@" -display none
 fi
@@ -331,4 +437,58 @@ if [ "$log_serial" -eq 1 ]; then
 	set -- "$@" -serial "file:$qemu_serial_log_path"
 fi
 
-qemu-system-x86_64 "$@"
+echo "uefi=$uefi" >> "$vm_config_path"
+
+if [ "$uefi" -eq 1 ]; then
+	if [ "$uefi_empty_varstore" -eq 1 ]; then
+		cp -a "$ovmf_dir/OVMF_VARS_4M.qcow2" "$vm_dir/OVMF_VARS_4M.qcow2"
+	else
+		cp -a "$ovmf_dir/OVMF_VARS_4M.secboot.qcow2" "$vm_dir/OVMF_VARS_4M.qcow2"
+	fi
+
+	set -- "$@" -machine q35 \
+		-drive "if=pflash,format=qcow2,readonly=on,file=$ovmf_dir/OVMF_CODE_4M.secboot.qcow2" \
+		-drive "if=pflash,format=qcow2,file=$vm_dir/OVMF_VARS_4M.qcow2"
+fi
+
+echo "enable_tpm=$enable_tpm" >> "$vm_config_path"
+
+if [ "$enable_tpm" -eq 1 ]; then
+	mkdir -p "$XDG_RUNTIME_DIR/swtpm"
+	mkdir -p "$vm_dir/tpm2"
+	swtpm socket \
+		--ctrl "type=unixio,path=$XDG_RUNTIME_DIR/swtpm/$vm_name-swtpm.sock,mode=0600" \
+		--tpmstate "dir=$vm_dir/tpm2,mode=0600,lock" \
+		--log "file=$vm_dir/$vm_name-swtpm.log" \
+		--terminate \
+		--tpm2 &
+
+	set -- "$@" -chardev "socket,id=chrtpm,path=$XDG_RUNTIME_DIR/swtpm/$vm_name-swtpm.sock" \
+		-tpmdev emulator,id=tpm0,chardev=chrtpm \
+		-device tpm-crb,tpmdev=tpm0
+fi
+
+echo "enable_qemu_guest_agent=$enable_qemu_guest_agent" >> "$vm_config_path"
+
+if [ "$enable_qemu_guest_agent" -eq 1 ]; then
+	set -- "$@" -chardev "socket,path=$vm_dir/qemu_guest_agent.sock,server=on,wait=off,id=qga0" \
+		-device virtio-serial \
+		-device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0
+fi
+
+if [ -n "$kernel_path" ]; then
+	set -- "$@" -kernel "${kernel_path:?}" -initrd "${initramfs_path:?}"
+	if [ -n "$append_cmdline" ]; then
+		set -- "$@" -append "${append_cmdline:?}"
+	fi
+fi
+
+if [ "$enable_gdb" -eq 1 ]; then
+	set -- "$@" -s -S
+fi
+
+if [ "$dry_run" -eq 1 ]; then
+	echo qemu-system-x86_64 "$@"
+else
+	qemu-system-x86_64 "$@"
+fi

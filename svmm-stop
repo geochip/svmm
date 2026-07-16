@@ -74,9 +74,9 @@ monitor_socket_path="$vm_dir/monitor.socket"
 [ -S "$monitor_socket_path" ] || fatal "VM '$vm_name' is not running"
 
 if [ "$force" -eq 1 ]; then
-	echo 'quit' | socat - "unix:$monitor_socket_path" > /dev/null
+	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "quit"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
 else
-	echo 'system_powerdown' | socat - "unix:$monitor_socket_path" > /dev/null
+	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "system_powerdown"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
 	[ -n "$wait" ] || exit
 
 	while [ -S "$monitor_socket_path" ]; do

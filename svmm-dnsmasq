@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+set -efux
+
+dnsmasq --log-queries --interface=svmmdynamicbr0 --listen-address=172.16.2.1 --bind-interface --no-daemon --dhcp-range=172.16.2.2,172.16.2.100 --dhcp-option=option:ntp-server,172.16.2.1

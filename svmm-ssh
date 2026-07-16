@@ -1,0 +1,68 @@
+#!/usr/bin/env sh
+
+set -f
+
+PROG="${0##*/}"
+
+vmm_dir="$HOME/vmm"
+
+show_help()
+{
+	cat <<-EOF
+	svmmssh [options] VM_NAME
+
+	Options:
+	  -v, --verbose			print executed commands
+	  -h, --help			show help and exit
+	EOF
+}
+
+fatal()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+	exit 1
+}
+
+vm_name=
+verbose=0
+while true; do
+	case "$1" in
+	-h | --help)
+		show_help
+		exit 0
+		;;
+	-v | --verbose)
+		verbose=1
+		shift
+		;;
+	-*)
+		printf >&2 "ERROR: Invalid flag '%s'\n\n" "$1"
+		show_help
+		exit 1
+		;;
+	*)
+		if [ -n "$1" ]; then
+			vm_name="$1"
+			shift
+		else
+			break
+		fi
+		;;
+	esac
+done
+
+[ "$verbose" -eq 0 ] || set -x
+
+[ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
+
+vm_dir="$vmm_dir/$vm_name"
+
+[ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
+
+. "$vm_dir/vmm.conf"
+
+if [ -n "$ssh_port" ]; then
+	ssh -i "$vm_dir/id_ed25519" -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -p "${ssh_port:?}" root@127.0.0.1
+else
+	fatal 'non user networking'
+fi
