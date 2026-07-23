@@ -11,6 +11,8 @@ images_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/images"
 iso_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/iso"
 
 default_boot_drive_url='https://ftp.altlinux.org/pub/distributions/ALTLinux/images/Sisyphus/cloud/x86_64/alt-sisyphus-cloud-x86_64.qcow2'
+# TODO: use qemu-img info to autodetect the format
+default_boot_drive_format='qcow2'
 default_disk_size='10G'
 default_memory='2G'
 default_cores='2'
@@ -21,36 +23,38 @@ show_help()
 	svmm-run [options] VM_NAME
 
 	Options:
-	  --memory <MEM>		sets guest RAM size to MEM (default: $default_memory)
-	  --cores <NUM>			sets the number of CPUs to NUM (default: $default_cores)
-	  --kvm				enable hardware accelaration using KVM
-	  --cpu <CPU>			emulate selected CPU
-	  --replace			first delete VM with this name if it already exists
-	  --iso-path <path>		attach the ISO at this path to the VM as cdrom
-	  --iso-url <URL>		attach the ISO at this url to the VM as cdrom
-	  --create-boot-drive		create empty qcow2 file as boot drive for the VM
-	  --disk-size <GB>		allocate this much disk space for the boot drive (default: $default_disk_size)
-	  --boot-drive-url <URL>	use qcow2 file at this url as boot image (default: $default_boot_drive_url)
-	  --second-drive <path>		path to qcow2 file to attach another drive to the VM
-	  --net-tap <tap>		use QEMU tap networking and connect VM's NIC to tap device with this name
-	  --net-address-cidr <IP-CIDR>	assign this IP address and network mask to the VM's network interface
-	  --net-gateway <IP>		use this IP as the default gateway in the VM
-	  --net-dhcp			enable dhcp discovery in VM
-	  --spice			enable and connect to SPICE
-	  --gtk				use gtk GUI for VM output
-	  --vnc <number>		enable and start vnc server on port 5900+<number>
-	  --no-cloud-init-drive		don't attach cloud-init drive for NoCloud datasource
-	  --log-serial			redirect serial port to a file
-	  --uefi			use UEFI (OVMF) instead of legacy BIOS (SeaBIOS)
-	  --uefi-empty-varstore		use empty OVMF_VARS file (no secure boot keys enrolled)
-	  --guest-agent			enable qemu guest agent support for this VM
-	  --kernel <PATH>		boot the kernel at PATH directly
-	  --initramfs <PATH>		use initramfs at PATH when direct kernel booting
-	  --append-cmdline <CMDLINE>	use CMDLINE as the kernel command line
-	  --gdb				enable gdb server
-	  --dry-run			print qemu command, which would be run, but don't actually run qemu
-	  -v, --verbose			print executed commands
-	  -h, --help			show help and exit
+	  --memory <MEM>				sets guest RAM size to MEM (default: $default_memory)
+	  --cores <NUM>					sets the number of CPUs to NUM (default: $default_cores)
+	  --kvm						enable hardware accelaration using KVM
+	  --cpu <CPU>					emulate selected CPU
+	  --replace					first delete VM with this name if it already exists
+	  --iso-path <path>				attach the ISO at this path to the VM as cdrom
+	  --iso-url <URL>				attach the ISO at this url to the VM as cdrom
+	  --create-boot-drive				create empty qcow2 file as boot drive for the VM
+	  --disk-size <GB>				allocate this much disk space for the boot drive (default: $default_disk_size)
+	  --boot-drive-url <URL>			use file at this url as boot image (default: $default_boot_drive_url)
+	  --boot-drive-format <FORMAT>			file format of boot image (default: $default_boot_drive_format)
+	  --second-drive <path>				path to qcow2 file to attach another drive to the VM
+	  --net-tap <tap>				use QEMU tap networking and connect VM's NIC to tap device with this name
+	  --net-address-cidr <IP-CIDR>			assign this IP address and network mask to the VM's network interface
+	  --net-gateway <IP>				use this IP as the default gateway in the VM
+	  --net-dhcp					enable dhcp discovery in VM
+	  --cloud-init-network-config-version <VERSION>	use specified network-config version (1 or 2, default: 2)
+	  --spice					enable and connect to SPICE
+	  --gtk						use gtk GUI for VM output
+	  --vnc <number>				enable and start vnc server on port 5900+<number>
+	  --no-cloud-init-drive				don't attach cloud-init drive for NoCloud datasource
+	  --log-serial					redirect serial port to a file
+	  --uefi					use UEFI (OVMF) instead of legacy BIOS (SeaBIOS)
+	  --uefi-empty-varstore				use empty OVMF_VARS file (no secure boot keys enrolled)
+	  --guest-agent					enable qemu guest agent support for this VM
+	  --kernel <PATH>				boot the kernel at PATH directly
+	  --initramfs <PATH>				use initramfs at PATH when direct kernel booting
+	  --append-cmdline <CMDLINE>			use CMDLINE as the kernel command line
+	  --gdb						enable gdb server
+	  --dry-run					print qemu command, which would be run, but don't actually run qemu
+	  -v, --verbose					print executed commands
+	  -h, --help					show help and exit
 	EOF
 }
 
@@ -72,11 +76,13 @@ iso_url=
 create_boot_drive=0
 disk_size=
 boot_drive_url=
+boot_drive_format=
 second_drive=
 network_tap_device_name=
 network_vm_ip_address_cidr=
 network_vm_default_gateway=
 network_vm_dhcp=0
+cloud_init_network_config_version=2
 enable_spice=0
 display_gtk=0
 vnc=
@@ -90,6 +96,7 @@ kernel_path=
 initramfs_path=
 append_cmdline=
 enable_gdb=0
+cloud_init_user_data_path=
 dry_run=0
 while true; do
 	case "$1" in
@@ -141,6 +148,10 @@ while true; do
 		boot_drive_url="$2"
 		shift 2
 		;;
+	--boot-drive-format)
+		boot_drive_format="$2"
+		shift 2
+		;;
 	--second-drive)
 		second_drive="$2"
 		shift 2
@@ -160,6 +171,10 @@ while true; do
 	--net-dhcp)
 		network_vm_dhcp=1
 		shift 1
+		;;
+	--cloud-init-network-config-version)
+		cloud_init_network_config_version="$2"
+		shift 2
 		;;
 	--spice)
 		enable_spice=1
@@ -213,6 +228,10 @@ while true; do
 		enable_gdb=1
 		shift
 		;;
+	--cloud-init-user-data)
+		cloud_init_user_data_path="$2"
+		shift 2
+		;;
 	--dry-run)
 		dry_run=1
 		shift
@@ -237,6 +256,7 @@ done
 
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 [ -n "$boot_drive_url" ] || boot_drive_url="$default_boot_drive_url"
+[ -n "$boot_drive_format" ] || boot_drive_format="$default_boot_drive_format"
 [ -n "$memory" ] || memory="$default_memory"
 [ -n "$cores" ] || cores="$default_cores"
 [ -n "$disk_size" ] || disk_size="$default_disk_size"
@@ -260,8 +280,9 @@ vm_mac_address="52:54:00:$(printf '%s' "$vm_name" | crc32 /dev/stdin | tail -c7 
 
 mkdir -p "$vm_dir"
 
-vm_disk_path="$vm_dir/disk.qcow2"
-vm_cloud_init_drive_path="$vm_dir/cloud_init_drive.img"
+vm_disk_path="$vm_dir/disk"
+vm_cloud_init_dir="$vm_dir/cloud-init"
+vm_cloud_init_drive_path="$vm_cloud_init_dir/cloud_init_drive.img"
 
 mkdir -p "$images_dir"
 mkdir -p "$iso_dir"
@@ -278,7 +299,20 @@ elif [ "$create_boot_drive" -eq 1 ] && [ -n "$iso_url" ] && [ ! -f "${iso_path:?
 fi
 
 if [ "$create_boot_drive" -eq 0 ]; then
-	qemu-img create -b "$boot_drive_path" -B qcow2 -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
+	if [ "$boot_drive_format" = 'qcow2' ]; then
+		qemu-img create -b "$boot_drive_path" -B "$boot_drive_format" -f "$boot_drive_format" "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
+	elif [ "$boot_drive_format" = 'raw' ]; then
+		cp -a "$boot_drive_path" "$vm_disk_path" > /dev/null || fatal "Failed to copy the boot drive image for '$vm_name' from '$boot_drive_path'"
+		if [ "${boot_drive_url##*.}" = 'xz' ]; then
+			mv "$vm_disk_path" "$vm_disk_path.xz"
+			xz -d "$vm_disk_path.xz" || fatal "Failed to decompress boot drive '$vm_disk_path' (from '$boot_drive_path')"
+		fi
+		mv "$vm_disk_path" "$vm_disk_path.$boot_drive_format"
+		vm_disk_path=$vm_disk_path.$boot_drive_format
+		qemu-img resize "$vm_disk_path" "$disk_size"
+	else
+		fatal "Unknown boot drive file format '$boot_drive_format"
+	fi
 else
 	qemu-img create -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a new empty boot drive for '$vm_name'"
 fi
@@ -291,6 +325,8 @@ echo "cores=$cores" >> "$vm_config_path"
 echo "network_type=$network_type" >> "$vm_config_path"
 
 if [ "$attach_cloud_init_drive" -eq 1 ]; then
+	mkdir -p "$vm_cloud_init_dir"
+
 	ssh_key_path="$vm_dir/id_ed25519"
 
 	ssh-keygen -t ed25519 -f "$ssh_key_path" -N '' > /dev/null
@@ -298,50 +334,79 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 	pub_ssh_key_path="${ssh_key_path}.pub"
 	pub_ssh_key="$(cat "$pub_ssh_key_path")"
 
-	user_data_path="$vm_dir/user-data.yaml"
+	user_data_path="$vm_cloud_init_dir/user-data"
 
-	cat <<-EOF > "$user_data_path"
-	#cloud-config
-	disable_root: false
-	users:
-	  - name: root
-	    lock_passwd: false
-	    plain_text_passwd: "123"
-	    ssh_authorized_keys:
-	      - ${pub_ssh_key}
-	hostname: ${vm_name}
-	EOF
+	if [ -n "$cloud_init_user_data_path" ]; then
+		cp -a "$cloud_init_user_data_path" "$user_data_path" || fatal "Failed to copy user-data from '$cloud_init_user_data_path'"
+	else
+		cat <<-EOF > "$user_data_path"
+		#cloud-config
+		disable_root: false
+		users:
+		  - name: root
+		    lock_passwd: false
+		    plain_text_passwd: "123"
+		    ssh_authorized_keys:
+		      - ${pub_ssh_key}
+		hostname: ${vm_name}
+		EOF
+	fi
 
 	if [ "$network_type" = 'user' ]; then
 		cloud-localds "$vm_cloud_init_drive_path" "$user_data_path"
 	else
-		network_config_path="$vm_dir/network.yaml"
+		network_config_path="$vm_cloud_init_dir/network-config"
 
 		if [ "$network_vm_dhcp" -eq 1 ]; then
-			cat <<-EOF > "$network_config_path"
-			version: 2
-			ethernets:
-			  interface0:
-			    match:
-			      name: "e*"
-			    dhcp4: true
-			EOF
+			if [ "$cloud_init_network_config_version" = '1' ]; then
+				fatal 'not implemented'
+			elif [ "$cloud_init_network_config_version" = '2' ]; then
+				cat <<-EOF > "$network_config_path"
+				version: 2
+				ethernets:
+				  interface0:
+				    match:
+				      name: "e*"
+				    dhcp4: true
+				EOF
+			else
+				fatal "unknown cloud-init network-config version: '$cloud_init_network_config_version'"
+			fi
 		else
-			cat <<-EOF > "$network_config_path"
-			version: 2
-			ethernets:
-			  interface0:
-			    match:
-			      name: "e*"
-			    addresses:
-			      - ${network_vm_ip_address_cidr:?}
-			    routes:
-			      - to: 0.0.0.0/0
-			        via: ${network_vm_default_gateway:?}
-			    nameservers:
-			      addresses:
-			        - 8.8.8.8
-			EOF
+			[ -n "${network_vm_ip_address_cidr}" ] || fatal '--net-address-cidr is not set'
+			[ -n "${network_vm_default_gateway}" ] || fatal '--net-gateway is not set'
+
+			if [ "$cloud_init_network_config_version" = '1' ]; then
+				cat <<-EOF > "$network_config_path"
+				version: 1
+				config:
+				  - type: physical
+				    name: eth0
+				    mac_address: "$vm_mac_address"
+				    subnets:
+				      - type: static
+				        address: $network_vm_ip_address_cidr
+				        gateway: $network_vm_default_gateway
+				EOF
+			elif [ "$cloud_init_network_config_version" = '2' ]; then
+				cat <<-EOF > "$network_config_path"
+				version: 2
+				ethernets:
+				  interface0:
+				    match:
+				      name: "e*"
+				    addresses:
+				      - ${network_vm_ip_address_cidr:?}
+				    routes:
+				      - to: 0.0.0.0/0
+				        via: ${network_vm_default_gateway:?}
+				    nameservers:
+				      addresses:
+				        - 8.8.8.8
+				EOF
+			else
+				fatal "unknown cloud-init network-config version: '$cloud_init_network_config_version'"
+			fi
 		fi
 
 		cloud-localds --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
@@ -360,7 +425,7 @@ set -- -name "$vm_name" \
 	-smbios "type=1,uuid=$vm_uuid" \
 	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
 	-mon chardev=qmp,mode=control,pretty=off \
-	-blockdev "node-name=disk1,discard=unmap,driver=qcow2,file.driver=file,file.filename=${vm_disk_path}" \
+	-blockdev "node-name=disk1,discard=unmap,driver=${boot_drive_format},file.driver=file,file.filename=${vm_disk_path}" \
 	-device virtio-blk-pci,drive=disk1
 
 echo "kvm=$enable_kvm" >> "$vm_config_path"
