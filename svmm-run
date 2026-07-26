@@ -426,7 +426,7 @@ set -- -name "$vm_name" \
 	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
 	-mon chardev=qmp,mode=control,pretty=off \
 	-blockdev "node-name=disk1,discard=unmap,driver=${boot_drive_format},file.driver=file,file.filename=${vm_disk_path}" \
-	-device virtio-blk-pci,drive=disk1
+	-device virtio-blk-pci,drive=disk1,bootindex=0
 
 echo "kvm=$enable_kvm" >> "$vm_config_path"
 
@@ -462,7 +462,7 @@ fi
 
 if [ -n "$iso_path_option" ] || [ -n "$iso_url" ]; then
 	set -- "$@" -blockdev "node-name=cdrom1-drive,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
-		-device ide-cd,id=cdrom1,drive=cdrom1-drive
+		-device ide-cd,id=cdrom1,drive=cdrom1-drive,bootindex=1
 fi
 
 if [ "$network_type" = 'user' ]; then
