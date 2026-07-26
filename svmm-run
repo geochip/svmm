@@ -353,7 +353,7 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 	fi
 
 	if [ "$network_type" = 'user' ]; then
-		cloud-localds "$vm_cloud_init_drive_path" "$user_data_path"
+		cloud-localds --hostname "$vm_name" "$vm_cloud_init_drive_path" "$user_data_path"
 	else
 		network_config_path="$vm_cloud_init_dir/network-config"
 
@@ -409,7 +409,7 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 			fi
 		fi
 
-		cloud-localds --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
+		cloud-localds --hostname "$vm_name" --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
 	fi
 fi
 
