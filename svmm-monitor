@@ -15,6 +15,7 @@ show_help()
 	  raw				connect to monitor socket to issue raw requests
 	  query-block			query info about block devices
 	  eject <DEVICE_ID>		eject device with id DEVICE_ID
+	  change <DEVICE_ID> <FILENAME>	change device with id DEVICE_ID to FILENAME
 
 	Options:
 	  -v, --verbose			print executed commands
@@ -32,6 +33,7 @@ verbose=0
 command=
 vm_name=
 device_id=
+filename=
 while true; do
 	case "$1" in
 	-v | --verbose)
@@ -63,6 +65,17 @@ while true; do
 			shift
 		else
 			fatal 'device id to eject is not specified'
+		fi
+		;;
+	change)
+		command=change
+		shift
+		if [ -n "$1" ] && [ -n "$2" ]; then
+			device_id="$1"
+			filename="$2"
+			shift
+		else
+			fatal 'device id to change or filename are not specified'
 		fi
 		;;
 	*)
@@ -111,5 +124,10 @@ fi
 
 if [ "$command" = 'eject' ]; then
 	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute":"eject","arguments":{"id":"'"$device_id"'"}}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
+	exit
+fi
+
+if [ "$command" = 'change' ]; then
+	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute":"blockdev-change-medium","arguments":{"id":"'"$device_id"'","filename":"'"$filename"'","format":"raw"}}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
 	exit
 fi
