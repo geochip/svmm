@@ -328,7 +328,7 @@ if [ "$create_boot_drive" -eq 0 ]; then
 		fi
 		mv "$vm_disk_path" "$vm_disk_path.$boot_drive_format"
 		vm_disk_path=$vm_disk_path.$boot_drive_format
-		qemu-img resize "$vm_disk_path" "$disk_size"
+		qemu-img resize "$vm_disk_path" "$disk_size" || fatal "Failed to resize the boot drive '$vm_disk_path' to '$disk_size'"
 	else
 		fatal "Unknown boot drive file format '$boot_drive_format'"
 	fi
@@ -350,7 +350,7 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 
 	ssh_key_path="$vm_dir/id_ed25519"
 
-	ssh-keygen -t ed25519 -f "$ssh_key_path" -N '' > /dev/null
+	ssh-keygen -t ed25519 -f "$ssh_key_path" -N '' > /dev/null || fatal "Failed to generate an ssh key for '$vm_name'"
 
 	pub_ssh_key_path="${ssh_key_path}.pub"
 	pub_ssh_key="$(cat "$pub_ssh_key_path")"
@@ -374,7 +374,7 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 	fi
 
 	if [ "$network_type" = 'user' ]; then
-		cloud-localds --hostname "$vm_name" "$vm_cloud_init_drive_path" "$user_data_path"
+		cloud-localds --hostname "$vm_name" "$vm_cloud_init_drive_path" "$user_data_path" || fatal "Failed to create the cloud-init drive for '$vm_name'"
 	else
 		network_config_path="$vm_cloud_init_dir/network-config"
 
@@ -432,7 +432,7 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 			fi
 		fi
 
-		cloud-localds --hostname "$vm_name" --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path"
+		cloud-localds --hostname "$vm_name" --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path" || fatal "Failed to create the cloud-init drive for '$vm_name'"
 	fi
 fi
 
