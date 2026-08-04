@@ -9,7 +9,7 @@ vmm_dir="$HOME/vmm"
 show_help()
 {
 	cat <<-EOF
-	svmmssh [options] VM_NAME
+	svmm-ssh [options] VM_NAME
 
 	Options:
 	  -v, --verbose			print executed commands

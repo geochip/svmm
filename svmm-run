@@ -44,9 +44,11 @@ show_help()
 	  --gtk						use gtk GUI for VM output
 	  --vnc <number>				enable and start vnc server on port 5900+<number>
 	  --no-cloud-init-drive				don't attach cloud-init drive for NoCloud datasource
+	  --cloud-init-user-data <path>			use this file as cloud-init user-data
 	  --log-serial					redirect serial port to a file
 	  --uefi					use UEFI (OVMF) instead of legacy BIOS (SeaBIOS)
 	  --uefi-empty-varstore				use empty OVMF_VARS file (no secure boot keys enrolled)
+	  --tpm						enable TPM 2.0 emulation using swtpm
 	  --guest-agent					enable qemu guest agent support for this VM
 	  --kernel <PATH>				boot the kernel at PATH directly
 	  --initramfs <PATH>				use initramfs at PATH when direct kernel booting
