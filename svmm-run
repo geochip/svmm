@@ -400,6 +400,8 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 				      - type: static
 				        address: $network_vm_ip_address_cidr
 				        gateway: $network_vm_default_gateway
+				        dns_nameservers:
+				          - 8.8.8.8
 				EOF
 			elif [ "$cloud_init_network_config_version" = '2' ]; then
 				cat <<-EOF > "$network_config_path"
