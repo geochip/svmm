@@ -129,15 +129,26 @@ while [ "$i" -lt "${drive_count:-0}" ]; do
 	i=$((i + 1))
 done
 
-if [ "${network_type:?}" = 'user' ]; then
-	set -- "$@" -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port:?}-:22" \
-		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address:?}"
-fi
+i=0
+while [ "$i" -lt "${netif_count:?}" ]; do
+	eval "netif_type=\$netif_${i}_type; netif_ifname=\$netif_${i}_ifname; netif_mac=\$netif_${i}_mac; netif_ssh_port=\$netif_${i}_ssh_port"
 
-if [ "${network_type:?}" = 'tap' ]; then
-	set -- "$@" -netdev "tap,id=net0,ifname=${network_tap_device_name:?},script=no" \
-		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address:?}"
-fi
+	case "$netif_type" in
+		user)
+			set -- "$@" -netdev "user,id=net$i,hostfwd=tcp:127.0.0.1:${netif_ssh_port:?}-:22" \
+				-device "virtio-net-pci,netdev=net$i,mac=${netif_mac:?}"
+			;;
+		tap)
+			set -- "$@" -netdev "tap,id=net$i,ifname=${netif_ifname:?},script=no" \
+				-device "virtio-net-pci,netdev=net$i,mac=${netif_mac:?}"
+			;;
+		*)
+			fatal "unknown network card type '$netif_type' in vmm.conf"
+			;;
+	esac
+
+	i=$((i + 1))
+done
 
 if [ "${enable_spice:?}" -eq 1 ]; then
 	set -- "$@" -display spice-app
