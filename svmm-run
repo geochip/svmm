@@ -35,7 +35,8 @@ show_help()
 	  --boot-drive-url <URL>			use file at this url as boot image (default: $default_boot_drive_url)
 	  --boot-drive-path <path>			use local file at this path as boot image (mutually exclusive with --boot-drive-url)
 	  --boot-drive-format <FORMAT>			file format of boot image: qcow2 or raw (default: autodetect with qemu-img info)
-	  --second-drive <path>				path to qcow2 file to attach another drive to the VM
+	  --drive <path>					attach an existing disk image (repeatable)
+	  --new-drive <size>				create and attach an empty qcow2 drive (repeatable)
 	  --net-tap <tap>				use QEMU tap networking and connect VM's NIC to tap device with this name
 	  --net-address-cidr <IP-CIDR>			assign this IP address and network mask to the VM's network interface
 	  --net-gateway <IP>				use this IP as the default gateway in the VM
@@ -70,6 +71,12 @@ fetch()
 	mv "$tmp" "$dest"
 }
 
+# assign $2 to the variable named $1, safe for arbitrary values
+set_var()
+{
+	eval "$1=\"\$2\""
+}
+
 # write a shell-quoted key=value line to stdout (grouped into vmm.conf below)
 config_write()
 {
@@ -90,7 +97,7 @@ disk_size=
 boot_drive_url=
 boot_drive_path_option=
 boot_drive_format=
-second_drive=
+drive_count=0
 network_tap_device_name=
 network_vm_ip_address_cidr=
 network_vm_default_gateway=
@@ -169,8 +176,16 @@ while true; do
 		boot_drive_format="$2"
 		shift 2
 		;;
-	--second-drive)
-		second_drive="$2"
+	--drive)
+		[ "$#" -ge 2 ] || fatal 'Not enough arguments: --drive'
+		set_var "drive_${drive_count}_path" "$2"
+		drive_count=$((drive_count + 1))
+		shift 2
+		;;
+	--new-drive)
+		[ "$#" -ge 2 ] || fatal 'Not enough arguments: --new-drive'
+		set_var "drive_${drive_count}_new_size" "$2"
+		drive_count=$((drive_count + 1))
 		shift 2
 		;;
 	--net-tap)
@@ -391,6 +406,27 @@ else
 	boot_drive_format=qcow2
 fi
 
+i=0
+while [ "$i" -lt "$drive_count" ]; do
+	eval "drive_path=\$drive_${i}_path; drive_new_size=\$drive_${i}_new_size"
+
+	if [ -n "$drive_new_size" ]; then
+		drive_path="$vm_dir/disk$((i + 2)).qcow2"
+		qemu-img create -f qcow2 "$drive_path" "$drive_new_size" > /dev/null || fatal "Failed to create drive '$drive_path'"
+		set_var "drive_${i}_path" "$drive_path"
+		drive_format=qcow2
+	else
+		drive_path=$(abspath "$drive_path")
+		[ -f "$drive_path" ] || fatal "Drive image '$drive_path' doesn't exist"
+		set_var "drive_${i}_path" "$drive_path"
+		drive_format=$(qemu-img info --output=json "$drive_path" 2> /dev/null | jq -r .format)
+		[ -n "$drive_format" ] || fatal "Failed to detect the format of drive '$drive_path' (not a disk image?)"
+	fi
+	set_var "drive_${i}_format" "$drive_format"
+
+	i=$((i + 1))
+done
+
 [ -n "$network_tap_device_name" ] && network_type='tap' || network_type='user'
 
 ssh_port=
@@ -508,7 +544,13 @@ vm_uuid="$(uuidgen)"
 	config_write ssh_port "$ssh_port"
 	config_write vm_mac_address "$vm_mac_address"
 	config_write attach_cloud_init_drive "$attach_cloud_init_drive"
-	config_write second_drive "$second_drive"
+	config_write drive_count "$drive_count"
+	i=0
+	while [ "$i" -lt "$drive_count" ]; do
+		eval "config_write drive_${i}_path \"\$drive_${i}_path\""
+		eval "config_write drive_${i}_format \"\$drive_${i}_format\""
+		i=$((i + 1))
+	done
 	config_write enable_spice "$enable_spice"
 	config_write log_serial "$log_serial"
 	config_write uefi "$uefi"
