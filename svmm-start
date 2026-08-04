@@ -83,10 +83,6 @@ vm_config_path="$vm_dir/vmm.conf"
 
 . "$vm_config_path"
 
-# defaults for VMs created before these were saved in the config
-: "${vm_disk_path:=$vm_dir/disk}"
-: "${boot_drive_format:=qcow2}"
-
 
 set -- -name "$vm_name" \
 	-m "${memory:?}" \
@@ -97,7 +93,7 @@ set -- -name "$vm_name" \
 	-smbios "type=1,uuid=${vm_uuid:?}" \
 	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
 	-mon chardev=qmp,mode=control,pretty=off \
-	-blockdev "node-name=disk1,discard=unmap,driver=${boot_drive_format},file.driver=file,file.filename=${vm_disk_path}" \
+	-blockdev "node-name=disk1,discard=unmap,driver=${boot_drive_format:?},file.driver=file,file.filename=${vm_disk_path:?}" \
 	-device virtio-blk-pci,drive=disk1,bootindex=0
 
 if [ "${kvm:?}" -eq 1 ]; then

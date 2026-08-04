@@ -64,13 +64,9 @@ monitor_socket_path="$vm_dir/monitor.socket"
 
 . "$vm_config_path"
 
-# defaults for VMs created before these were saved in the config
-: "${vm_disk_path:=$vm_dir/disk}"
-: "${boot_drive_format:=qcow2}"
+[ "${boot_drive_format:?}" = 'qcow2' ] || fatal "internal snapshots are only supported on qcow2 drives, VM '$vm_name' uses '$boot_drive_format'"
 
-[ "$boot_drive_format" = 'qcow2' ] || fatal "internal snapshots are only supported on qcow2 drives, VM '$vm_name' uses '$boot_drive_format'"
-
-qemu-img snapshot -c "$snapshot_name" "$vm_disk_path"
+qemu-img snapshot -c "$snapshot_name" "${vm_disk_path:?}"
 
 if [ -n "${second_drive}" ]; then
 	qemu-img snapshot -c "$snapshot_name" "$second_drive"
