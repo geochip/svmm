@@ -121,10 +121,13 @@ if [ "${attach_cloud_init_drive:?}" -eq 1 ]; then
 		-device virtio-blk-pci,drive=cloud-init-drive
 fi
 
-if [ -n "${second_drive}" ]; then
-	set -- "$@" -blockdev "node-name=disk2,discard=unmap,driver=qcow2,file.driver=file,file.filename=${second_drive:?}" \
-		-device virtio-blk-pci,drive=disk2
-fi
+i=0
+while [ "$i" -lt "${drive_count:-0}" ]; do
+	eval "drive_path=\$drive_${i}_path; drive_format=\$drive_${i}_format"
+	set -- "$@" -blockdev "node-name=disk$((i + 2)),discard=unmap,driver=${drive_format},file.driver=file,file.filename=${drive_path}" \
+		-device virtio-blk-pci,drive=disk$((i + 2))
+	i=$((i + 1))
+done
 
 if [ "${network_type:?}" = 'user' ]; then
 	set -- "$@" -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port:?}-:22" \
