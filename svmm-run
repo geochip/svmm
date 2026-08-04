@@ -13,8 +13,6 @@ images_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/images"
 iso_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/iso"
 
 default_boot_drive_url='https://ftp.altlinux.org/pub/distributions/ALTLinux/images/Sisyphus/cloud/x86_64/alt-sisyphus-cloud-x86_64.qcow2'
-# TODO: use qemu-img info to autodetect the format
-default_boot_drive_format='qcow2'
 default_disk_size='10G'
 default_memory='2G'
 default_cores='2'
@@ -36,7 +34,7 @@ show_help()
 	  --disk-size <GB>				allocate this much disk space for the boot drive (default: $default_disk_size)
 	  --boot-drive-url <URL>			use file at this url as boot image (default: $default_boot_drive_url)
 	  --boot-drive-path <path>			use local file at this path as boot image (mutually exclusive with --boot-drive-url)
-	  --boot-drive-format <FORMAT>			file format of boot image (default: $default_boot_drive_format)
+	  --boot-drive-format <FORMAT>			file format of boot image: qcow2 or raw (default: autodetect with qemu-img info)
 	  --second-drive <path>				path to qcow2 file to attach another drive to the VM
 	  --net-tap <tap>				use QEMU tap networking and connect VM's NIC to tap device with this name
 	  --net-address-cidr <IP-CIDR>			assign this IP address and network mask to the VM's network interface
@@ -287,7 +285,6 @@ fi
 [ -z "$iso_path_option" ] || iso_path_option=$(abspath "$iso_path_option")
 
 [ -n "$boot_drive_url" ] || boot_drive_url="$default_boot_drive_url"
-[ -n "$boot_drive_format" ] || boot_drive_format="$default_boot_drive_format"
 [ -n "$memory" ] || memory="$default_memory"
 [ -n "$cores" ] || cores="$default_cores"
 [ -n "$disk_size" ] || disk_size="$default_disk_size"
@@ -367,6 +364,15 @@ if [ "$create_boot_drive" -eq 0 ]; then
 			fi
 			boot_drive_path=$decompressed
 			;;
+	esac
+fi
+
+if [ "$create_boot_drive" -eq 0 ] && [ -z "$boot_drive_format" ]; then
+	boot_drive_format=$(qemu-img info --output=json "$boot_drive_path" 2> /dev/null | jq -r .format)
+	case "$boot_drive_format" in
+		qcow2 | raw) ;;
+		'') fatal "Failed to detect the format of '$boot_drive_path' (not a disk image?)" ;;
+		*) fatal "Unsupported boot drive format '$boot_drive_format' of '$boot_drive_path' (convert to qcow2 or raw first)" ;;
 	esac
 fi
 
