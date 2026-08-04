@@ -57,7 +57,26 @@ vm_dir="$vmm_dir/$vm_name"
 . "$vm_dir/vmm.conf"
 
 if [ -n "$ssh_port" ]; then
-	ssh -i "$vm_dir/id_ed25519" -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -p "${ssh_port:?}" root@127.0.0.1
+	set -- -p "$ssh_port" root@127.0.0.1
 else
-	fatal 'non user networking'
+	# no forwarded ssh port: use the first tap NIC with a known address,
+	# either the configured static one or a lease from svmm-dnsmasq
+	ip=
+	i=0
+	while [ "$i" -lt "${netif_count:-0}" ] && [ -z "$ip" ]; do
+		if [ "$(get_var "netif_${i}_type")" = 'tap' ]; then
+			cidr=$(get_var "netif_${i}_address_cidr")
+			if [ -n "$cidr" ]; then
+				ip=${cidr%/*}
+			elif [ -f "$dnsmasq_leases_file" ]; then
+				mac=$(get_var "netif_${i}_mac")
+				ip=$(awk -v mac="$mac" '$2 == mac {print $3}' "$dnsmasq_leases_file" | tail -n 1)
+			fi
+		fi
+		i=$((i + 1))
+	done
+	[ -n "$ip" ] || fatal "VM '$vm_name' has no forwarded ssh port and no known tap NIC address"
+	set -- "root@$ip"
 fi
+
+ssh -i "$vm_dir/id_ed25519" -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "$@"

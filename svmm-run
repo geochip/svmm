@@ -606,6 +606,7 @@ vm_uuid="$(uuidgen)"
 		config_write netif_${i}_ifname "$(get_var "netif_${i}_ifname")"
 		config_write netif_${i}_mac "$(get_var "netif_${i}_mac")"
 		config_write netif_${i}_ssh_port "$(get_var "netif_${i}_ssh_port")"
+		config_write netif_${i}_address_cidr "$(get_var "netif_${i}_address_cidr")"
 		i=$((i + 1))
 	done
 	config_write attach_cloud_init_drive "$attach_cloud_init_drive"
