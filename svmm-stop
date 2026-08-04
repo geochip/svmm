@@ -4,7 +4,7 @@ set -f
 
 PROG="${0##*/}"
 
-vmm_dir="$HOME/vmm"
+. svmm-common
 
 show_help()
 {
@@ -17,12 +17,6 @@ show_help()
 	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
-}
-
-fatal()
-{
-	printf '%s: %s\n' "$PROG" "$1" >&2
-	exit 1
 }
 
 vm_name=
@@ -74,16 +68,11 @@ monitor_socket_path="$vm_dir/monitor.socket"
 [ -S "$monitor_socket_path" ] || fatal "VM '$vm_name' is not running"
 
 if [ "$force" -eq 1 ]; then
-	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "quit"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
+	qmp "$monitor_socket_path" '{"execute": "quit"}' > /dev/null
 else
-	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "system_powerdown"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
+	qmp "$monitor_socket_path" '{"execute": "system_powerdown"}' > /dev/null
 fi
 
 [ "$wait" -eq 1 ] || exit
 
-qemu_pid_file_path="$vm_dir/qemu_pid"
-read -r qemu_pid 2> /dev/null < "$qemu_pid_file_path"
-
-while [ -n "$qemu_pid" ] && kill -0 "$qemu_pid" 2> /dev/null; do
-	sleep 1
-done
+wait_qemu_exit "$vm_dir"

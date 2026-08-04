@@ -1,0 +1,28 @@
+# shared code for svmm scripts, source via: . svmm-common
+# expects PROG to be set by the sourcing script
+# shellcheck disable=SC2034 # used by sourcing scripts
+
+vmm_dir="$HOME/vmm"
+
+fatal()
+{
+	printf '%s: %s\n' "$PROG" "$1" >&2
+	exit 1
+}
+
+# send a one-shot QMP command to a VM's monitor socket
+# $1 = monitor socket path, $2 = QMP command JSON
+qmp()
+{
+	{ echo '{"execute":"qmp_capabilities"}' && echo "$2"; } | socat STDIO "UNIX-CONNECT:$1"
+}
+
+# wait for the qemu process recorded in the VM's pidfile to exit
+# $1 = VM directory
+wait_qemu_exit()
+{
+	read -r qemu_pid 2> /dev/null < "$1/qemu_pid"
+	while [ -n "$qemu_pid" ] && kill -0 "$qemu_pid" 2> /dev/null; do
+		sleep 1
+	done
+}

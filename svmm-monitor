@@ -4,7 +4,7 @@ set -f
 
 PROG="${0##*/}"
 
-vmm_dir="$HOME/vmm"
+. svmm-common
 
 show_help()
 {
@@ -21,12 +21,6 @@ show_help()
 	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
-}
-
-fatal()
-{
-	printf '%s: %s\n' "$PROG" "$1" >&2
-	exit 1
 }
 
 verbose=0
@@ -107,27 +101,16 @@ if [ "$command" = 'raw' ]; then
 fi
 
 if [ "$command" = 'query-block' ]; then
-	result=$({ echo '{"execute":"qmp_capabilities"}' && echo '{"execute":"query-block"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path")
-
-	while read -r line; do
-		case "$line" in
-			*'"QMP"'*) continue ;;
-			*'{"return": {}}'*) continue ;;
-		esac
-
-		printf '%s' "$line" | jq -r '.return[] | "\(.qdev) \(.inserted.image.filename)"'
-	done <<STR
-$result
-STR
+	qmp "$monitor_socket_path" '{"execute":"query-block"}' | jq -r '.return[]? | "\(.qdev) \(.inserted.image.filename)"'
 	exit
 fi
 
 if [ "$command" = 'eject' ]; then
-	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute":"eject","arguments":{"id":"'"$device_id"'"}}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
+	qmp "$monitor_socket_path" '{"execute":"eject","arguments":{"id":"'"$device_id"'"}}' > /dev/null
 	exit
 fi
 
 if [ "$command" = 'change' ]; then
-	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute":"blockdev-change-medium","arguments":{"id":"'"$device_id"'","filename":"'"$filename"'","format":"raw"}}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
+	qmp "$monitor_socket_path" '{"execute":"blockdev-change-medium","arguments":{"id":"'"$device_id"'","filename":"'"$filename"'","format":"raw"}}' > /dev/null
 	exit
 fi

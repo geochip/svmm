@@ -4,6 +4,8 @@ set -f
 
 PROG="${0##*/}"
 
+. svmm-common
+
 show_help()
 {
 	cat <<-EOF
@@ -23,12 +25,6 @@ show_help()
 	  -v, --verbose		print executed commands
 	  -h, --help		show help and exit
 	EOF
-}
-
-fatal()
-{
-	printf '%s: %s\n' "$PROG" "$1" >&2
-	exit 1
 }
 
 command=

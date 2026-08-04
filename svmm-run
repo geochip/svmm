@@ -4,9 +4,10 @@ set -f
 
 PROG="${0##*/}"
 
+. svmm-common
+
 ovmf_dir='/usr/share/OVMF'
 
-vmm_dir="$HOME/vmm"
 images_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/images"
 iso_dir="${XDG_DATA_HOME:-$HOME/.local/share}/vmm/iso"
 
@@ -58,12 +59,6 @@ show_help()
 	  -v, --verbose					print executed commands
 	  -h, --help					show help and exit
 	EOF
-}
-
-fatal()
-{
-	printf '%s: %s\n' "$PROG" "$1" >&2
-	exit 1
 }
 
 fetch()
@@ -287,12 +282,8 @@ if [ -d "$vm_dir" ]; then
 	[ "$replace" -eq 1 ] || fatal "VM '$vm_name' already exists"
 
 	if [ -S "$monitor_socket_path" ]; then
-		{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "quit"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
-
-		read -r qemu_pid 2> /dev/null < "$qemu_pid_file_path"
-		while [ -n "$qemu_pid" ] && kill -0 "$qemu_pid" 2> /dev/null; do
-			sleep 1
-		done
+		qmp "$monitor_socket_path" '{"execute": "quit"}' > /dev/null
+		wait_qemu_exit "$vm_dir"
 	fi
 
 	rm -rf "$vm_dir"

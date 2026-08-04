@@ -2,7 +2,7 @@
 
 PROG="${0##*/}"
 
-vmm_dir="$HOME/vmm"
+. svmm-common
 
 show_help()
 {
@@ -13,12 +13,6 @@ show_help()
 	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
 	EOF
-}
-
-fatal()
-{
-	printf '%s: %s\n' "$PROG" "$1" >&2
-	exit 1
 }
 
 vm_name=
