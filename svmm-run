@@ -372,6 +372,15 @@ fi
 
 mkdir -p "$vm_dir"
 
+# remove the half-created VM if anything below fails
+vm_dir_incomplete=1
+cleanup_on_exit()
+{
+	[ "$vm_dir_incomplete" -eq 0 ] || rm -rf "$vm_dir"
+}
+trap cleanup_on_exit EXIT
+trap 'exit 1' HUP INT TERM
+
 vm_disk_path="$vm_dir/disk"
 vm_cloud_init_dir="$vm_dir/cloud-init"
 vm_cloud_init_drive_path="$vm_cloud_init_dir/cloud_init_drive.img"
@@ -643,5 +652,8 @@ set --
 [ "$display_gtk" -eq 0 ] || set -- "$@" --gtk
 [ "$dry_run" -eq 0 ] || set -- "$@" --dry-run
 [ "$verbose" -eq 0 ] || set -- "$@" --verbose
+
+# creation succeeded: keep the VM directory even if the start fails
+vm_dir_incomplete=0
 
 exec svmm-start "$@" "$vm_name"
