@@ -70,7 +70,7 @@ qemu-img snapshot -c "$snapshot_name" "${vm_disk_path:?}"
 
 i=0
 while [ "$i" -lt "${drive_count:-0}" ]; do
-	eval "drive_path=\$drive_${i}_path; drive_format=\$drive_${i}_format"
+	drive_path=$(get_var "drive_${i}_path"); drive_format=$(get_var "drive_${i}_format")
 	if [ "$drive_format" = 'qcow2' ]; then
 		qemu-img snapshot -c "$snapshot_name" "$drive_path" || fatal "Failed to snapshot drive '$drive_path'"
 	else

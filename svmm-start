@@ -123,7 +123,7 @@ fi
 
 i=0
 while [ "$i" -lt "${drive_count:-0}" ]; do
-	eval "drive_path=\$drive_${i}_path; drive_format=\$drive_${i}_format"
+	drive_path=$(get_var "drive_${i}_path"); drive_format=$(get_var "drive_${i}_format")
 	set -- "$@" -blockdev "node-name=disk$((i + 2)),discard=unmap,driver=${drive_format},file.driver=file,file.filename=${drive_path}" \
 		-device virtio-blk-pci,drive=disk$((i + 2))
 	i=$((i + 1))
@@ -131,7 +131,8 @@ done
 
 i=0
 while [ "$i" -lt "${netif_count:?}" ]; do
-	eval "netif_type=\$netif_${i}_type; netif_ifname=\$netif_${i}_ifname; netif_mac=\$netif_${i}_mac; netif_ssh_port=\$netif_${i}_ssh_port"
+	netif_type=$(get_var "netif_${i}_type"); netif_ifname=$(get_var "netif_${i}_ifname")
+	netif_mac=$(get_var "netif_${i}_mac"); netif_ssh_port=$(get_var "netif_${i}_ssh_port")
 
 	case "$netif_type" in
 		user)

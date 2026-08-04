@@ -322,13 +322,14 @@ fi
 # default: one user-mode card with ssh forwarding
 if [ "$netif_count" -eq 0 ]; then
 	netif_count=1
-	netif_0_type=user
+	set_var netif_0_type user
 fi
 
 gateway_count=0
 i=0
 while [ "$i" -lt "$netif_count" ]; do
-	eval "netif_type=\$netif_${i}_type; netif_dhcp=\$netif_${i}_dhcp; netif_cidr=\$netif_${i}_address_cidr; netif_gateway=\$netif_${i}_gateway"
+	netif_type=$(get_var "netif_${i}_type"); netif_dhcp=$(get_var "netif_${i}_dhcp")
+	netif_cidr=$(get_var "netif_${i}_address_cidr"); netif_gateway=$(get_var "netif_${i}_gateway")
 
 	if [ "$netif_type" = 'user' ]; then
 		[ -z "$netif_cidr" ] || fatal 'user networking does not support --net-address-cidr'
@@ -442,7 +443,7 @@ fi
 
 i=0
 while [ "$i" -lt "$drive_count" ]; do
-	eval "drive_path=\$drive_${i}_path; drive_new_size=\$drive_${i}_new_size"
+	drive_path=$(get_var "drive_${i}_path"); drive_new_size=$(get_var "drive_${i}_new_size")
 
 	if [ -n "$drive_new_size" ]; then
 		drive_path="$vm_dir/disk$((i + 2)).qcow2"
@@ -466,7 +467,7 @@ ssh_port=
 any_tap=0
 i=0
 while [ "$i" -lt "$netif_count" ]; do
-	eval "netif_type=\$netif_${i}_type"
+	netif_type=$(get_var "netif_${i}_type")
 
 	mac=$(printf '%s' "$vm_name:$i" | crc32 /dev/stdin | sed -E 's/.*(.{2})(.{2})(.{2})$/52:54:00:\1:\2:\3/')
 	set_var "netif_${i}_mac" "$mac"
@@ -525,7 +526,9 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 					echo 'ethernets:'
 					i=0
 					while [ "$i" -lt "$netif_count" ]; do
-						eval "netif_type=\$netif_${i}_type; netif_mac=\$netif_${i}_mac; netif_dhcp=\$netif_${i}_dhcp; netif_cidr=\$netif_${i}_address_cidr; netif_gateway=\$netif_${i}_gateway"
+						netif_type=$(get_var "netif_${i}_type"); netif_mac=$(get_var "netif_${i}_mac")
+					netif_dhcp=$(get_var "netif_${i}_dhcp")
+					netif_cidr=$(get_var "netif_${i}_address_cidr"); netif_gateway=$(get_var "netif_${i}_gateway")
 
 						echo "  nic$i:"
 						echo '    match:'
@@ -553,7 +556,9 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 					echo 'config:'
 					i=0
 					while [ "$i" -lt "$netif_count" ]; do
-						eval "netif_type=\$netif_${i}_type; netif_mac=\$netif_${i}_mac; netif_dhcp=\$netif_${i}_dhcp; netif_cidr=\$netif_${i}_address_cidr; netif_gateway=\$netif_${i}_gateway"
+						netif_type=$(get_var "netif_${i}_type"); netif_mac=$(get_var "netif_${i}_mac")
+					netif_dhcp=$(get_var "netif_${i}_dhcp")
+					netif_cidr=$(get_var "netif_${i}_address_cidr"); netif_gateway=$(get_var "netif_${i}_gateway")
 
 						echo '  - type: physical'
 						echo "    name: eth$i"
@@ -597,18 +602,18 @@ vm_uuid="$(uuidgen)"
 	config_write netif_count "$netif_count"
 	i=0
 	while [ "$i" -lt "$netif_count" ]; do
-		eval "config_write netif_${i}_type \"\$netif_${i}_type\""
-		eval "config_write netif_${i}_ifname \"\$netif_${i}_ifname\""
-		eval "config_write netif_${i}_mac \"\$netif_${i}_mac\""
-		eval "config_write netif_${i}_ssh_port \"\$netif_${i}_ssh_port\""
+		config_write netif_${i}_type "$(get_var "netif_${i}_type")"
+		config_write netif_${i}_ifname "$(get_var "netif_${i}_ifname")"
+		config_write netif_${i}_mac "$(get_var "netif_${i}_mac")"
+		config_write netif_${i}_ssh_port "$(get_var "netif_${i}_ssh_port")"
 		i=$((i + 1))
 	done
 	config_write attach_cloud_init_drive "$attach_cloud_init_drive"
 	config_write drive_count "$drive_count"
 	i=0
 	while [ "$i" -lt "$drive_count" ]; do
-		eval "config_write drive_${i}_path \"\$drive_${i}_path\""
-		eval "config_write drive_${i}_format \"\$drive_${i}_format\""
+		config_write drive_${i}_path "$(get_var "drive_${i}_path")"
+		config_write drive_${i}_format "$(get_var "drive_${i}_format")"
 		i=$((i + 1))
 	done
 	config_write enable_spice "$enable_spice"

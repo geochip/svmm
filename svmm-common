@@ -17,6 +17,13 @@ qmp()
 	{ echo '{"execute":"qmp_capabilities"}' && echo "$2"; } | socat STDIO "UNIX-CONNECT:$1"
 }
 
+# print the value of the variable named $1
+# (indirect read for indexed config keys like drive_0_path)
+get_var()
+{
+	eval "printf '%s' \"\$$1\""
+}
+
 # print the absolute form of a path
 abspath()
 {
