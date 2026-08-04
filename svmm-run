@@ -354,17 +354,28 @@ if [ -n "$iso_url" ] && [ ! -f "$iso_path" ]; then
 	fetch "$iso_url" "$iso_path"
 fi
 
+# xz-compressed images are decompressed into the cache once and reused
+if [ "$create_boot_drive" -eq 0 ]; then
+	case "$boot_drive_path" in
+		*.xz)
+			decompressed=${boot_drive_path%.xz}
+			decompressed="$images_dir/${decompressed##*/}"
+			if [ ! -f "$decompressed" ]; then
+				echo "Decompressing '$boot_drive_path'" >&2
+				xz -dc "$boot_drive_path" > "$decompressed.tmp" || { rm -f "$decompressed.tmp"; fatal "Failed to decompress '$boot_drive_path'"; }
+				mv "$decompressed.tmp" "$decompressed"
+			fi
+			boot_drive_path=$decompressed
+			;;
+	esac
+fi
+
 if [ "$create_boot_drive" -eq 0 ]; then
 	if [ "$boot_drive_format" = 'qcow2' ]; then
 		qemu-img create -b "$boot_drive_path" -B "$boot_drive_format" -f "$boot_drive_format" "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a boot drive for '$vm_name' from '$boot_drive_url'"
 	elif [ "$boot_drive_format" = 'raw' ]; then
+		vm_disk_path=$vm_disk_path.raw
 		cp -a "$boot_drive_path" "$vm_disk_path" > /dev/null || fatal "Failed to copy the boot drive image for '$vm_name' from '$boot_drive_path'"
-		if [ "${boot_drive_url##*.}" = 'xz' ]; then
-			mv "$vm_disk_path" "$vm_disk_path.xz"
-			xz -d "$vm_disk_path.xz" || fatal "Failed to decompress boot drive '$vm_disk_path' (from '$boot_drive_path')"
-		fi
-		mv "$vm_disk_path" "$vm_disk_path.$boot_drive_format"
-		vm_disk_path=$vm_disk_path.$boot_drive_format
 		qemu-img resize "$vm_disk_path" "$disk_size" || fatal "Failed to resize the boot drive '$vm_disk_path' to '$disk_size'"
 	else
 		fatal "Unknown boot drive file format '$boot_drive_format'"
