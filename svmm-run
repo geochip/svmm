@@ -2,6 +2,7 @@
 
 set -f
 
+# shellcheck disable=SC2034 # PROG is used by svmm-common
 PROG="${0##*/}"
 
 . svmm-common
@@ -290,7 +291,6 @@ fi
 vm_dir="$vmm_dir/$vm_name"
 vm_config_path="$vm_dir/vmm.conf"
 monitor_socket_path="$vm_dir/monitor.socket"
-qemu_pid_file_path="$vm_dir/qemu_pid"
 
 if [ -d "$vm_dir" ]; then
 	[ "$replace" -eq 1 ] || fatal "VM '$vm_name' already exists"

@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 
+# shellcheck disable=SC2034 # PROG is used by svmm-common
 PROG="${0##*/}"
 
 . svmm-common
