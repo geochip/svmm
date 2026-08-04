@@ -37,10 +37,10 @@ show_help()
 	  --boot-drive-format <FORMAT>			file format of boot image: qcow2 or raw (default: autodetect with qemu-img info)
 	  --drive <path>					attach an existing disk image (repeatable)
 	  --new-drive <size>				create and attach an empty qcow2 drive (repeatable)
-	  --net-tap <tap>				use QEMU tap networking and connect VM's NIC to tap device with this name
-	  --net-address-cidr <IP-CIDR>			assign this IP address and network mask to the VM's network interface
-	  --net-gateway <IP>				use this IP as the default gateway in the VM
-	  --net-dhcp					enable dhcp discovery in VM
+	  --net <user | tap=IFNAME>			add a network card (repeatable; default: one user card with ssh port forwarding)
+	  --net-address-cidr <IP-CIDR>			set static address for the previously added card (tap only)
+	  --net-gateway <IP>				set default gateway for the previously added card (tap only)
+	  --net-dhcp					use dhcp on the previously added card (tap only)
 	  --cloud-init-network-config-version <VERSION>	use specified network-config version (1 or 2, default: 2)
 	  --spice					enable and connect to SPICE
 	  --gtk						use gtk GUI for VM output
@@ -98,10 +98,7 @@ boot_drive_url=
 boot_drive_path_option=
 boot_drive_format=
 drive_count=0
-network_tap_device_name=
-network_vm_ip_address_cidr=
-network_vm_default_gateway=
-network_vm_dhcp=0
+netif_count=0
 cloud_init_network_config_version=2
 enable_spice=0
 display_gtk=0
@@ -188,20 +185,38 @@ while true; do
 		drive_count=$((drive_count + 1))
 		shift 2
 		;;
-	--net-tap)
-		network_tap_device_name="$2"
+	--net)
+		[ "$#" -ge 2 ] || fatal 'Not enough arguments: --net'
+		case "$2" in
+			user)
+				set_var "netif_${netif_count}_type" user
+				;;
+			tap=*)
+				set_var "netif_${netif_count}_type" tap
+				set_var "netif_${netif_count}_ifname" "${2#tap=}"
+				;;
+			*)
+				fatal "unknown network card type '$2' (want 'user' or 'tap=<ifname>')"
+				;;
+		esac
+		netif_count=$((netif_count + 1))
 		shift 2
 		;;
 	--net-address-cidr)
-		network_vm_ip_address_cidr="$2"
+		[ "$#" -ge 2 ] || fatal 'Not enough arguments: --net-address-cidr'
+		[ "$netif_count" -gt 0 ] || fatal '--net-address-cidr requires a preceding --net'
+		set_var "netif_$((netif_count - 1))_address_cidr" "$2"
 		shift 2
 		;;
 	--net-gateway)
-		network_vm_default_gateway="$2"
+		[ "$#" -ge 2 ] || fatal 'Not enough arguments: --net-gateway'
+		[ "$netif_count" -gt 0 ] || fatal '--net-gateway requires a preceding --net'
+		set_var "netif_$((netif_count - 1))_gateway" "$2"
 		shift 2
 		;;
 	--net-dhcp)
-		network_vm_dhcp=1
+		[ "$netif_count" -gt 0 ] || fatal '--net-dhcp requires a preceding --net'
+		set_var "netif_$((netif_count - 1))_dhcp" 1
 		shift
 		;;
 	--cloud-init-network-config-version)
@@ -304,11 +319,32 @@ fi
 [ -n "$cores" ] || cores="$default_cores"
 [ -n "$disk_size" ] || disk_size="$default_disk_size"
 
-if [ -z "$network_tap_device_name" ]; then
-	[ "$network_vm_dhcp" -eq 0 ] || fatal '--net-dhcp requires --net-tap'
-	[ -z "$network_vm_ip_address_cidr" ] || fatal '--net-address-cidr requires --net-tap'
-	[ -z "$network_vm_default_gateway" ] || fatal '--net-gateway requires --net-tap'
+# default: one user-mode card with ssh forwarding
+if [ "$netif_count" -eq 0 ]; then
+	netif_count=1
+	netif_0_type=user
 fi
+
+gateway_count=0
+i=0
+while [ "$i" -lt "$netif_count" ]; do
+	eval "netif_type=\$netif_${i}_type; netif_dhcp=\$netif_${i}_dhcp; netif_cidr=\$netif_${i}_address_cidr; netif_gateway=\$netif_${i}_gateway"
+
+	if [ "$netif_type" = 'user' ]; then
+		[ -z "$netif_cidr" ] || fatal 'user networking does not support --net-address-cidr'
+		[ -z "$netif_gateway" ] || fatal 'user networking does not support --net-gateway'
+	elif [ -n "$netif_dhcp" ]; then
+		[ -z "$netif_cidr" ] || fatal '--net-dhcp and --net-address-cidr are mutually exclusive'
+		[ -z "$netif_gateway" ] || fatal '--net-dhcp and --net-gateway are mutually exclusive'
+	else
+		[ -n "$netif_cidr" ] || fatal '--net tap requires --net-address-cidr or --net-dhcp'
+		[ -n "$netif_gateway" ] || fatal '--net-address-cidr requires --net-gateway'
+	fi
+	[ -z "$netif_gateway" ] || gateway_count=$((gateway_count + 1))
+
+	i=$((i + 1))
+done
+[ "$gateway_count" -le 1 ] || fatal 'only one network card can have a gateway'
 
 # normalize to qemu display syntax (":N" listens on port 5900+N)
 if [ -n "$vnc" ]; then
@@ -332,8 +368,6 @@ if [ -d "$vm_dir" ]; then
 
 	rm -rf "$vm_dir"
 fi
-
-vm_mac_address="$(printf '%s' "$vm_name" | crc32 /dev/stdin | sed -E 's/.*(.{2})(.{2})(.{2})$/52:54:00:\1:\2:\3/')"
 
 mkdir -p "$vm_dir"
 
@@ -427,15 +461,29 @@ while [ "$i" -lt "$drive_count" ]; do
 	i=$((i + 1))
 done
 
-[ -n "$network_tap_device_name" ] && network_type='tap' || network_type='user'
-
+next_ssh_port=24000
 ssh_port=
-if [ "$network_type" = 'user' ]; then
-	ssh_port=24000
-	while [ "$(ss --no-header --tcp state all sport "$ssh_port" | wc -l)" -ne 0 ]; do
-		ssh_port=$((ssh_port + 1))
-	done
-fi
+any_tap=0
+i=0
+while [ "$i" -lt "$netif_count" ]; do
+	eval "netif_type=\$netif_${i}_type"
+
+	mac=$(printf '%s' "$vm_name:$i" | crc32 /dev/stdin | sed -E 's/.*(.{2})(.{2})(.{2})$/52:54:00:\1:\2:\3/')
+	set_var "netif_${i}_mac" "$mac"
+
+	if [ "$netif_type" = 'user' ]; then
+		while [ "$(ss --no-header --tcp state all sport "$next_ssh_port" | wc -l)" -ne 0 ]; do
+			next_ssh_port=$((next_ssh_port + 1))
+		done
+		set_var "netif_${i}_ssh_port" "$next_ssh_port"
+		: "${ssh_port:=$next_ssh_port}"
+		next_ssh_port=$((next_ssh_port + 1))
+	else
+		any_tap=1
+	fi
+
+	i=$((i + 1))
+done
 
 if [ "$attach_cloud_init_drive" -eq 1 ]; then
 	mkdir -p "$vm_cloud_init_dir"
@@ -465,64 +513,70 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 		EOF
 	fi
 
-	if [ "$network_type" = 'user' ]; then
+	if [ "$any_tap" -eq 0 ]; then
 		cloud-localds --hostname "$vm_name" "$vm_cloud_init_drive_path" "$user_data_path" || fatal "Failed to create the cloud-init drive for '$vm_name'"
 	else
 		network_config_path="$vm_cloud_init_dir/network-config"
 
-		if [ "$network_vm_dhcp" -eq 1 ]; then
-			if [ "$cloud_init_network_config_version" = '1' ]; then
-				fatal 'not implemented'
-			elif [ "$cloud_init_network_config_version" = '2' ]; then
-				cat <<-EOF > "$network_config_path"
-				version: 2
-				ethernets:
-				  interface0:
-				    match:
-				      name: "e*"
-				    dhcp4: true
-				EOF
-			else
-				fatal "unknown cloud-init network-config version: '$cloud_init_network_config_version'"
-			fi
-		else
-			[ -n "${network_vm_ip_address_cidr}" ] || fatal '--net-address-cidr is not set'
-			[ -n "${network_vm_default_gateway}" ] || fatal '--net-gateway is not set'
+		case "$cloud_init_network_config_version" in
+			2)
+				{
+					echo 'version: 2'
+					echo 'ethernets:'
+					i=0
+					while [ "$i" -lt "$netif_count" ]; do
+						eval "netif_type=\$netif_${i}_type; netif_mac=\$netif_${i}_mac; netif_dhcp=\$netif_${i}_dhcp; netif_cidr=\$netif_${i}_address_cidr; netif_gateway=\$netif_${i}_gateway"
 
-			if [ "$cloud_init_network_config_version" = '1' ]; then
-				cat <<-EOF > "$network_config_path"
-				version: 1
-				config:
-				  - type: physical
-				    name: eth0
-				    mac_address: "$vm_mac_address"
-				    subnets:
-				      - type: static
-				        address: $network_vm_ip_address_cidr
-				        gateway: $network_vm_default_gateway
-				        dns_nameservers:
-				          - 8.8.8.8
-				EOF
-			elif [ "$cloud_init_network_config_version" = '2' ]; then
-				cat <<-EOF > "$network_config_path"
-				version: 2
-				ethernets:
-				  interface0:
-				    match:
-				      name: "e*"
-				    addresses:
-				      - ${network_vm_ip_address_cidr:?}
-				    routes:
-				      - to: 0.0.0.0/0
-				        via: ${network_vm_default_gateway:?}
-				    nameservers:
-				      addresses:
-				        - 8.8.8.8
-				EOF
-			else
+						echo "  nic$i:"
+						echo '    match:'
+						echo "      macaddress: \"$netif_mac\""
+						if [ "$netif_type" = 'user' ] || [ -n "$netif_dhcp" ]; then
+							echo '    dhcp4: true'
+						else
+							echo '    addresses:'
+							echo "      - $netif_cidr"
+							echo '    routes:'
+							echo '      - to: 0.0.0.0/0'
+							echo "        via: $netif_gateway"
+							echo '    nameservers:'
+							echo '      addresses:'
+							echo '        - 8.8.8.8'
+						fi
+
+						i=$((i + 1))
+					done
+				} > "$network_config_path"
+				;;
+			1)
+				{
+					echo 'version: 1'
+					echo 'config:'
+					i=0
+					while [ "$i" -lt "$netif_count" ]; do
+						eval "netif_type=\$netif_${i}_type; netif_mac=\$netif_${i}_mac; netif_dhcp=\$netif_${i}_dhcp; netif_cidr=\$netif_${i}_address_cidr; netif_gateway=\$netif_${i}_gateway"
+
+						echo '  - type: physical'
+						echo "    name: eth$i"
+						echo "    mac_address: \"$netif_mac\""
+						echo '    subnets:'
+						if [ "$netif_type" = 'user' ] || [ -n "$netif_dhcp" ]; then
+							echo '      - type: dhcp'
+						else
+							echo '      - type: static'
+							echo "        address: $netif_cidr"
+							echo "        gateway: $netif_gateway"
+							echo '        dns_nameservers:'
+							echo '          - 8.8.8.8'
+						fi
+
+						i=$((i + 1))
+					done
+				} > "$network_config_path"
+				;;
+			*)
 				fatal "unknown cloud-init network-config version: '$cloud_init_network_config_version'"
-			fi
-		fi
+				;;
+		esac
 
 		cloud-localds --hostname "$vm_name" --network-config "$network_config_path" "$vm_cloud_init_drive_path" "$user_data_path" || fatal "Failed to create the cloud-init drive for '$vm_name'"
 	fi
@@ -539,10 +593,16 @@ vm_uuid="$(uuidgen)"
 	config_write kvm "$enable_kvm"
 	config_write cpu "$cpu"
 	config_write vnc "$vnc"
-	config_write network_type "$network_type"
-	config_write network_tap_device_name "$network_tap_device_name"
 	config_write ssh_port "$ssh_port"
-	config_write vm_mac_address "$vm_mac_address"
+	config_write netif_count "$netif_count"
+	i=0
+	while [ "$i" -lt "$netif_count" ]; do
+		eval "config_write netif_${i}_type \"\$netif_${i}_type\""
+		eval "config_write netif_${i}_ifname \"\$netif_${i}_ifname\""
+		eval "config_write netif_${i}_mac \"\$netif_${i}_mac\""
+		eval "config_write netif_${i}_ssh_port \"\$netif_${i}_ssh_port\""
+		i=$((i + 1))
+	done
 	config_write attach_cloud_init_drive "$attach_cloud_init_drive"
 	config_write drive_count "$drive_count"
 	i=0
