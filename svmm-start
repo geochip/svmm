@@ -95,6 +95,7 @@ set -- -name "$vm_name" \
 	-smbios "type=1,uuid=${vm_uuid:?}" \
 	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
 	-mon chardev=qmp,mode=control,pretty=off \
+	-device VGA \
 	-blockdev "node-name=disk1,discard=unmap,driver=${boot_drive_format:?},file.driver=file,file.filename=${vm_disk_path:?}" \
 	-device virtio-blk-pci,drive=disk1,bootindex=0
 
@@ -154,7 +155,7 @@ done
 if [ "${enable_spice:?}" -eq 1 ]; then
 	set -- "$@" -display spice-app
 elif [ "$display_gtk" -eq 1 ]; then
-	set -- "$@" -display gtk -device VGA
+	set -- "$@" -display gtk
 else
 	set -- "$@" -display none
 fi
