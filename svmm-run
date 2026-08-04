@@ -288,6 +288,11 @@ if [ -d "$vm_dir" ]; then
 
 	if [ -S "$monitor_socket_path" ]; then
 		{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "quit"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
+
+		read -r qemu_pid 2> /dev/null < "$qemu_pid_file_path"
+		while [ -n "$qemu_pid" ] && kill -0 "$qemu_pid" 2> /dev/null; do
+			sleep 1
+		done
 	fi
 
 	rm -rf "$vm_dir"
