@@ -13,15 +13,23 @@ $ svmm run --kvm --cpu host --cores 2 --memory 4G --disk-size 10G --gtk --log-se
 ## Dependencies
 
 - `sh`
-- `qemu-img`
-- `qemu-system-x86_64`
+- `qemu-img` and `qemu-system-x86_64` (uses `qemu-img create -B`, the
+  backing-format option name in QEMU > 10.0; with older releases use `-F`)
 - `socat`
 - `crc32`
-- `head`
-- `tail`
-- `sed`
 - `curl`
-- `wc`
 - `ss`
-- `swtmp` (for `--tpm`)
+- `uuidgen`
+- `jq` (for `svmm monitor query-block`)
+- `ssh` and `ssh-keygen`
+- `swtpm` (for `--tpm`)
 - `cloud-localds`
+- `ip` and `nft` (for `svmm-setup-network`)
+- `dnsmasq` (for `svmm-dnsmasq`)
+
+## Security note
+
+The default cloud-init user-data sets the root password to "123" and
+enables password login. With `--net-tap` the VM is reachable from the
+LAN, so use `--cloud-init-user-data` with your own credentials for
+anything beyond local testing.
