@@ -63,9 +63,8 @@ for vm_dir in "$vmm_dir"/*; do
 
 	vm_name="${vm_dir##*/}"
 
-	printf '%-30s ' "$vm_name"
-
 	if [ "$show_status" -eq 1 ]; then
+		printf '%-30s ' "$vm_name"
 		enable_color=0
 		case "$color_option" in
 			'auto')
@@ -94,6 +93,6 @@ for vm_dir in "$vmm_dir"/*; do
 			printf '%s\n' "$status"
 		fi
 	else
-		echo ''
+		printf '%s\n' "$vm_name"
 	fi
 done
