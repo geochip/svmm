@@ -69,7 +69,7 @@ for vm_dir in "$vmm_dir"/*; do
 		enable_color=0
 		case "$color_option" in
 			'auto')
-				[ -t 0 ] && enable_color=1 || enable_color=0
+				[ -t 1 ] && enable_color=1 || enable_color=0
 				;;
 			'always')
 				enable_color=1
