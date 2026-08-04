@@ -317,6 +317,7 @@ else
 	qemu-img create -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a new empty boot drive for '$vm_name'"
 fi
 
+echo "vm_disk_path=$vm_disk_path" >> "$vm_config_path"
 echo "memory=$memory" >> "$vm_config_path"
 echo "cores=$cores" >> "$vm_config_path"
 
