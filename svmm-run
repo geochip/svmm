@@ -416,6 +416,8 @@ fi
 vm_uuid="$(uuidgen)"
 echo "vm_uuid=$vm_uuid" >> "$vm_config_path"
 
+echo "boot_drive_format=$boot_drive_format" >> "$vm_config_path"
+
 set -- -name "$vm_name" \
 	-m "$memory" \
 	-smp "$cores" \
