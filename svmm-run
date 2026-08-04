@@ -470,115 +470,26 @@ vm_uuid="$(uuidgen)"
 	config_write uefi "$uefi"
 	config_write enable_tpm "$enable_tpm"
 	config_write enable_qemu_guest_agent "$enable_qemu_guest_agent"
+	config_write kernel_path "$kernel_path"
+	config_write initramfs_path "$initramfs_path"
+	config_write append_cmdline "$append_cmdline"
+	config_write enable_gdb "$enable_gdb"
 } > "$vm_config_path"
 
-set -- -name "$vm_name" \
-	-m "$memory" \
-	-smp "$cores" \
-	-daemonize \
-	-nodefaults \
-	-pidfile "$qemu_pid_file_path" \
-	-smbios "type=1,uuid=$vm_uuid" \
-	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
-	-mon chardev=qmp,mode=control,pretty=off \
-	-blockdev "node-name=disk1,discard=unmap,driver=${boot_drive_format},file.driver=file,file.filename=${vm_disk_path}" \
-	-device virtio-blk-pci,drive=disk1,bootindex=0
-
-if [ "$enable_kvm" -eq 1 ]; then
-	set -- "$@" -accel kvm
-fi
-
-if [ -n "$cpu" ]; then
-	set -- "$@" -cpu "$cpu"
-fi
-
-if [ -n "$vnc" ]; then
-	set -- "$@" -vnc "$vnc"
-fi
-
-if [ "$attach_cloud_init_drive" -eq 1 ]; then
-	set -- "$@" -blockdev "node-name=cloud-init-drive,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=${vm_cloud_init_drive_path}" \
-		-device virtio-blk-pci,drive=cloud-init-drive
-fi
-
-if [ -n "$second_drive" ]; then
-	set -- "$@" -blockdev "node-name=disk2,discard=unmap,driver=qcow2,file.driver=file,file.filename=${second_drive}" \
-		-device virtio-blk-pci,drive=disk2
-fi
-
-if [ -n "$iso_path_option" ] || [ -n "$iso_url" ]; then
-	set -- "$@" -blockdev "node-name=cdrom1-drive,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
-		-device ide-cd,id=cdrom1,drive=cdrom1-drive,bootindex=1
-fi
-
-if [ "$network_type" = 'user' ]; then
-	set -- "$@" -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" \
-		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address}"
-fi
-
-if [ "$network_type" = 'tap' ]; then
-	set -- "$@" -netdev "tap,id=net0,ifname=${network_tap_device_name},script=no" \
-		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address}"
-fi
-
-if [ "$enable_spice" -eq 1 ]; then
-	set -- "$@" -display spice-app
-elif [ "$display_gtk" -eq 1 ]; then
-	set -- "$@" -display gtk -device VGA
-else
-	set -- "$@" -display none
-fi
-
-if [ "$log_serial" -eq 1 ]; then
-	qemu_serial_log_path="$vm_dir/serial-$(date +%Y%m%d-%H%M%S).log"
-	set -- "$@" -serial "file:$qemu_serial_log_path"
-fi
-
+# the OVMF varstore is per-VM state and must be created here; everything
+# else launch-related is handled by svmm-start from vmm.conf
 if [ "$uefi" -eq 1 ]; then
 	if [ "$uefi_empty_varstore" -eq 1 ]; then
-		cp -a "$ovmf_dir/OVMF_VARS_4M.qcow2" "$vm_dir/OVMF_VARS_4M.qcow2"
+		cp -a "$ovmf_dir/OVMF_VARS_4M.qcow2" "$vm_dir/OVMF_VARS_4M.qcow2" || fatal 'Failed to copy the OVMF varstore (is OVMF installed?)'
 	else
-		cp -a "$ovmf_dir/OVMF_VARS_4M.secboot.qcow2" "$vm_dir/OVMF_VARS_4M.qcow2"
+		cp -a "$ovmf_dir/OVMF_VARS_4M.secboot.qcow2" "$vm_dir/OVMF_VARS_4M.qcow2" || fatal 'Failed to copy the OVMF varstore (is OVMF installed?)'
 	fi
-
-	set -- "$@" -machine q35 \
-		-drive "if=pflash,format=qcow2,readonly=on,file=$ovmf_dir/OVMF_CODE_4M.secboot.qcow2" \
-		-drive "if=pflash,format=qcow2,file=$vm_dir/OVMF_VARS_4M.qcow2"
 fi
 
-if [ "$enable_tpm" -eq 1 ]; then
-	mkdir -p "$XDG_RUNTIME_DIR/swtpm"
-	mkdir -p "$vm_dir/tpm2"
-	swtpm socket \
-		--ctrl "type=unixio,path=$XDG_RUNTIME_DIR/swtpm/$vm_name-swtpm.sock,mode=0600" \
-		--tpmstate "dir=$vm_dir/tpm2,mode=0600,lock" \
-		--log "file=$vm_dir/$vm_name-swtpm.log" \
-		--terminate \
-		--tpm2 &
+set --
+[ -z "$iso_path" ] || set -- "$@" --iso-path "$iso_path"
+[ "$display_gtk" -eq 0 ] || set -- "$@" --gtk
+[ "$dry_run" -eq 0 ] || set -- "$@" --dry-run
+[ "$verbose" -eq 0 ] || set -- "$@" --verbose
 
-	set -- "$@" -chardev "socket,id=chrtpm,path=$XDG_RUNTIME_DIR/swtpm/$vm_name-swtpm.sock" \
-		-tpmdev emulator,id=tpm0,chardev=chrtpm \
-		-device tpm-crb,tpmdev=tpm0
-fi
-
-if [ "$enable_qemu_guest_agent" -eq 1 ]; then
-	set -- "$@" -chardev "socket,path=$vm_dir/qemu_guest_agent.sock,server=on,wait=off,id=qga0" \
-		-device virtio-serial \
-		-device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0
-fi
-
-if [ -n "$kernel_path" ]; then
-	set -- "$@" -kernel "${kernel_path:?}"
-	[ -z "$initramfs_path" ] || set -- "$@" -initrd "$initramfs_path"
-	[ -z "$append_cmdline" ] || set -- "$@" -append "$append_cmdline"
-fi
-
-if [ "$enable_gdb" -eq 1 ]; then
-	set -- "$@" -s -S
-fi
-
-if [ "$dry_run" -eq 1 ]; then
-	echo qemu-system-x86_64 "$@"
-else
-	qemu-system-x86_64 "$@"
-fi
+exec svmm-start "$@" "$vm_name"
