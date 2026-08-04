@@ -10,11 +10,14 @@ PROG="${0##*/}"
 show_help()
 {
 	cat <<-EOF
-	svmm-ssh [options] VM_NAME
+	svmm-ssh [options] VM_NAME [COMMAND...]
 
 	Options:
 	  -v, --verbose			print executed commands
 	  -h, --help			show help and exit
+
+	Runs COMMAND on the VM through ssh, like ssh(1); without a
+	COMMAND it connects interactively.
 	EOF
 }
 
@@ -36,15 +39,18 @@ while true; do
 		exit 1
 		;;
 	*)
-		if [ -n "$1" ]; then
-			vm_name="$1"
-			shift
-		else
-			break
-		fi
+		[ -n "$1" ] || break
+		vm_name="$1"
+		shift
+		break
 		;;
 	esac
 done
+
+# everything after VM_NAME is the command to run on the VM
+command="$*"
+has_command=0
+[ "$#" -gt 0 ] && has_command=1
 
 [ "$verbose" -eq 0 ] || set -x
 
@@ -78,5 +84,7 @@ else
 	[ -n "$ip" ] || fatal "VM '$vm_name' has no forwarded ssh port and no known tap NIC address"
 	set -- "root@$ip"
 fi
+
+[ "$has_command" -eq 1 ] && set -- "$@" "$command"
 
 ssh -i "$vm_dir/id_ed25519" -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "$@"
