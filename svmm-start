@@ -75,6 +75,8 @@ qemu_pid_file_path="$vm_dir/qemu_pid"
 
 [ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
 
+svmm-is-qemu-running "$vm_name" && fatal "VM '$vm_name' is already running"
+
 vm_cloud_init_dir="$vm_dir/cloud-init"
 vm_config_path="$vm_dir/vmm.conf"
 
