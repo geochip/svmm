@@ -182,7 +182,7 @@ while true; do
 		;;
 	--net-dhcp)
 		network_vm_dhcp=1
-		shift 1
+		shift
 		;;
 	--cloud-init-network-config-version)
 		cloud_init_network_config_version="$2"
@@ -303,7 +303,7 @@ if [ -d "$vm_dir" ]; then
 	rm -rf "$vm_dir"
 fi
 
-vm_mac_address="52:54:00:$(printf '%s' "$vm_name" | crc32 /dev/stdin | tail -c7 | sed -E 's/([a-f0-9]{2})/\1:/g' | head -c8)"
+vm_mac_address="$(printf '%s' "$vm_name" | crc32 /dev/stdin | sed -E 's/.*(.{2})(.{2})(.{2})$/52:54:00:\1:\2:\3/')"
 
 mkdir -p "$vm_dir"
 
@@ -311,11 +311,14 @@ vm_disk_path="$vm_dir/disk"
 vm_cloud_init_dir="$vm_dir/cloud-init"
 vm_cloud_init_drive_path="$vm_cloud_init_dir/cloud_init_drive.img"
 
-mkdir -p "$images_dir"
-mkdir -p "$iso_dir"
+mkdir -p "$images_dir" "$iso_dir"
 
 boot_drive_path="$images_dir/${boot_drive_url##*/}"
-{ [ -n "$iso_path_option" ] && iso_path=$iso_path_option; } || { [ -n "$iso_url" ] && iso_path=$iso_dir/${iso_url##*/}; }
+if [ -n "$iso_path_option" ]; then
+	iso_path=$iso_path_option
+elif [ -n "$iso_url" ]; then
+	iso_path=$iso_dir/${iso_url##*/}
+fi
 
 if [ "$create_boot_drive" -eq 0 ] && [ ! -f "$boot_drive_path" ]; then
 	echo "Downloading boot drive image from '$boot_drive_url'" >&2

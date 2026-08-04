@@ -61,15 +61,10 @@ for vm_dir in "$vmm_dir"/*; do
 		printf '%-30s ' "$vm_name"
 		enable_color=0
 		case "$color_option" in
-			'auto')
-				[ -t 1 ] && enable_color=1 || enable_color=0
-				;;
-			'always')
-				enable_color=1
-				;;
-			'never')
-				enable_color=0
-				;;
+			'always') enable_color=1 ;;
+			'auto') [ -t 1 ] && enable_color=1 ;;
+			'never') ;;
+			*) fatal "unknown color mode '$color_option'" ;;
 		esac
 		status=
 		color=
