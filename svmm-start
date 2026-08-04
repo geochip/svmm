@@ -144,16 +144,8 @@ else
 fi
 
 if [ "${log_serial:?}" -eq 1 ]; then
-	qemu_serial_log_path="$vm_dir/serial.log"
-	if [ -f "$qemu_serial_log_path" ]; then
-		existing_logs=0
-		for file in "$qemu_serial_log_path".[0-9][0-9]; do
-		    if [ -e "$file" ]; then
-			existing_logs="$((existing_logs + 1))"
-		    fi
-		done
-	fi
-	set -- "$@" -serial "file:$qemu_serial_log_path.$((existing_logs + 1))"
+	qemu_serial_log_path="$vm_dir/serial-$(date +%Y%m%d-%H%M%S).log"
+	set -- "$@" -serial "file:$qemu_serial_log_path"
 fi
 
 if [ "${enable_tpm:?}" -eq 1 ]; then

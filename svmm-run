@@ -501,7 +501,7 @@ fi
 echo "log_serial=$log_serial" >> "$vm_config_path"
 
 if [ "$log_serial" -eq 1 ]; then
-	qemu_serial_log_path="$vm_dir/serial.log"
+	qemu_serial_log_path="$vm_dir/serial-$(date +%Y%m%d-%H%M%S).log"
 	set -- "$@" -serial "file:$qemu_serial_log_path"
 fi
 
