@@ -73,10 +73,14 @@ if [ "$all" -eq 1 ]; then
 		[ -d "$vm_dir" ] || continue
 
 		vm_name="${vm_dir##*/}"
+		monitor_socket_path="$vm_dir/monitor.socket"
 
 		if svmm-is-qemu-running "$vm_name"; then
-			[ -n "$force" ] || error "Cannot remove VM '$vm_name' - as it is running" && continue
-			printf "quit\n" | socat - "unix:$monitor_socket_path" > /dev/null
+			if [ "$force" -ne 1 ]; then
+				error "Cannot remove VM '$vm_name' - as it is running"
+				continue
+			fi
+			{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "quit"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
 		fi
 
 		rm -rf "$vm_dir"
@@ -92,8 +96,8 @@ monitor_socket_path="$vm_dir/monitor.socket"
 [ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
 
 if svmm-is-qemu-running "$vm_name"; then
-	[ -n "$force" ] || fatal "$vm_name is running"
-	printf "quit\n" | socat - "unix:$monitor_socket_path" > /dev/null
+	[ "$force" -eq 1 ] || fatal "$vm_name is running"
+	{ echo '{"execute":"qmp_capabilities"}' && echo '{"execute": "quit"}'; } | socat STDIO "UNIX-CONNECT:$monitor_socket_path" > /dev/null
 fi
 
 rm -rf "$vm_dir"
