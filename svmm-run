@@ -35,6 +35,7 @@ show_help()
 	  --create-boot-drive				create empty qcow2 file as boot drive for the VM
 	  --disk-size <GB>				allocate this much disk space for the boot drive (default: $default_disk_size)
 	  --boot-drive-url <URL>			use file at this url as boot image (default: $default_boot_drive_url)
+	  --boot-drive-path <path>			use local file at this path as boot image (mutually exclusive with --boot-drive-url)
 	  --boot-drive-format <FORMAT>			file format of boot image (default: $default_boot_drive_format)
 	  --second-drive <path>				path to qcow2 file to attach another drive to the VM
 	  --net-tap <tap>				use QEMU tap networking and connect VM's NIC to tap device with this name
@@ -89,6 +90,7 @@ iso_url=
 create_boot_drive=0
 disk_size=
 boot_drive_url=
+boot_drive_path_option=
 boot_drive_format=
 second_drive=
 network_tap_device_name=
@@ -159,6 +161,10 @@ while true; do
 		;;
 	--boot-drive-url)
 		boot_drive_url="$2"
+		shift 2
+		;;
+	--boot-drive-path)
+		boot_drive_path_option="$2"
 		shift 2
 		;;
 	--boot-drive-format)
@@ -268,6 +274,18 @@ done
 [ "$verbose" -eq 0 ] || set -x
 
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
+
+if [ -n "$boot_drive_path_option" ] && [ -n "$boot_drive_url" ]; then
+	fatal '--boot-drive-path and --boot-drive-url are mutually exclusive'
+fi
+
+if [ "$create_boot_drive" -eq 1 ] && { [ -n "$boot_drive_path_option" ] || [ -n "$boot_drive_url" ]; }; then
+	fatal '--create-boot-drive cannot be combined with a boot drive image'
+fi
+
+[ -z "$boot_drive_path_option" ] || boot_drive_path_option=$(abspath "$boot_drive_path_option")
+[ -z "$iso_path_option" ] || iso_path_option=$(abspath "$iso_path_option")
+
 [ -n "$boot_drive_url" ] || boot_drive_url="$default_boot_drive_url"
 [ -n "$boot_drive_format" ] || boot_drive_format="$default_boot_drive_format"
 [ -n "$memory" ] || memory="$default_memory"
@@ -313,14 +331,20 @@ vm_cloud_init_drive_path="$vm_cloud_init_dir/cloud_init_drive.img"
 
 mkdir -p "$images_dir" "$iso_dir"
 
-boot_drive_path="$images_dir/${boot_drive_url##*/}"
+if [ -n "$boot_drive_path_option" ]; then
+	boot_drive_path=$boot_drive_path_option
+	[ -f "$boot_drive_path" ] || fatal "Boot drive image '$boot_drive_path' doesn't exist"
+else
+	boot_drive_path="$images_dir/${boot_drive_url##*/}"
+fi
+
 if [ -n "$iso_path_option" ]; then
 	iso_path=$iso_path_option
 elif [ -n "$iso_url" ]; then
 	iso_path=$iso_dir/${iso_url##*/}
 fi
 
-if [ "$create_boot_drive" -eq 0 ] && [ ! -f "$boot_drive_path" ]; then
+if [ "$create_boot_drive" -eq 0 ] && [ -z "$boot_drive_path_option" ] && [ ! -f "$boot_drive_path" ]; then
 	echo "Downloading boot drive image from '$boot_drive_url'" >&2
 	fetch "$boot_drive_url" "$boot_drive_path"
 fi

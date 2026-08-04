@@ -70,6 +70,8 @@ done
 
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 
+[ -z "$iso_path" ] || iso_path=$(abspath "$iso_path")
+
 vm_dir="$vmm_dir/$vm_name"
 monitor_socket_path="$vm_dir/monitor.socket"
 qemu_pid_file_path="$vm_dir/qemu_pid"

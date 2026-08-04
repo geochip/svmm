@@ -17,6 +17,15 @@ qmp()
 	{ echo '{"execute":"qmp_capabilities"}' && echo "$2"; } | socat STDIO "UNIX-CONNECT:$1"
 }
 
+# print the absolute form of a path
+abspath()
+{
+	case $1 in
+		/*) printf '%s\n' "$1" ;;
+		*) printf '%s/%s\n' "$PWD" "${1#./}" ;;
+	esac
+}
+
 # wait for the qemu process recorded in the VM's pidfile to exit
 # $1 = VM directory
 wait_qemu_exit()
