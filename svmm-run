@@ -445,6 +445,10 @@ else
 fi
 
 if [ -n "$vnc" ]; then
+	case "$vnc" in
+		*:*) ;;
+		*) vnc=":$vnc" ;;
+	esac
 	echo "vnc=$vnc" >> "$vm_config_path"
 	set -- "$@" -vnc "$vnc"
 fi
