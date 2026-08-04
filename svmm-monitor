@@ -73,7 +73,7 @@ while true; do
 		if [ -n "$1" ] && [ -n "$2" ]; then
 			device_id="$1"
 			filename="$2"
-			shift
+			shift 2
 		else
 			fatal 'device id to change or filename are not specified'
 		fi
