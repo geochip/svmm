@@ -293,9 +293,11 @@ boot_drive_path="$images_dir/${boot_drive_url##*/}"
 if [ "$create_boot_drive" -eq 0 ] && [ ! -f "$boot_drive_path" ]; then
 	echo "Downloading boot drive image from '$boot_drive_url'" >&2
 	curl "$boot_drive_url" --output "$boot_drive_path" --fail --location || fatal "Failed to download the boot drive image '$boot_drive_url'"
-elif [ "$create_boot_drive" -eq 1 ] && [ -n "$iso_url" ] && [ ! -f "${iso_path:?}" ]; then
+fi
+
+if [ -n "$iso_url" ] && [ ! -f "$iso_path" ]; then
 	echo "Downloading ISO from '$iso_url'" >&2
-	curl "$iso_url" --output "${iso_path:?}" --fail --location || fatal "Failed to download the ISO '$boot_drive_url'"
+	curl "$iso_url" --output "$iso_path" --fail --location || fatal "Failed to download the ISO '$iso_url'"
 fi
 
 if [ "$create_boot_drive" -eq 0 ]; then
