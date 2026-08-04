@@ -20,6 +20,10 @@ PROG=svmm-dnsmasq
 # dnsmasq lives in sbin which may be missing from the PATH
 command -v dnsmasq > /dev/null 2>&1 || PATH="$PATH:/usr/sbin:/sbin"
 
+# runtime files live in a root-owned directory on /run: files owned by
+# other users in /tmp can't be opened even by root (fs.protected_regular)
+mkdir -p /run/svmm
+
 # --conf-file=/dev/null: this instance is self-contained; the system-wide
-# config is ignored (and unreadable when running as a regular user)
-exec dnsmasq --conf-file=/dev/null --pid-file=/tmp/svmm-dnsmasq.pid --log-queries --interface=svmmdynamicbr0 --listen-address=172.16.2.1 --bind-interface --no-daemon --dhcp-range=172.16.2.2,172.16.2.100 --dhcp-option=option:ntp-server,172.16.2.1 --dhcp-leasefile="$dnsmasq_leases_file"
+# config is ignored
+exec dnsmasq --conf-file=/dev/null --pid-file=/run/svmm/dnsmasq.pid --log-queries --interface=svmmdynamicbr0 --listen-address=172.16.2.1 --bind-interface --no-daemon --dhcp-range=172.16.2.2,172.16.2.100 --dhcp-option=option:ntp-server,172.16.2.1 --dhcp-leasefile="$dnsmasq_leases_file"

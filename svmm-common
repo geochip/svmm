@@ -5,7 +5,8 @@
 vmm_dir="$HOME/vmm"
 
 # lease file of the svmm-dnsmasq instance serving the tap bridges
-dnsmasq_leases_file=/tmp/svmm-dnsmasq.leases
+# (root-owned directory, world-readable for svmm-ssh)
+dnsmasq_leases_file=/run/svmm/dnsmasq.leases
 
 fatal()
 {
