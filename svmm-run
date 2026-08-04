@@ -272,6 +272,12 @@ done
 [ -n "$cores" ] || cores="$default_cores"
 [ -n "$disk_size" ] || disk_size="$default_disk_size"
 
+if [ -z "$network_tap_device_name" ]; then
+	[ "$network_vm_dhcp" -eq 0 ] || fatal '--net-dhcp requires --net-tap'
+	[ -z "$network_vm_ip_address_cidr" ] || fatal '--net-address-cidr requires --net-tap'
+	[ -z "$network_vm_default_gateway" ] || fatal '--net-gateway requires --net-tap'
+fi
+
 vm_dir="$vmm_dir/$vm_name"
 vm_config_path="$vm_dir/vmm.conf"
 monitor_socket_path="$vm_dir/monitor.socket"
