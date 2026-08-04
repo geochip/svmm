@@ -70,6 +70,12 @@ fetch()
 	mv "$tmp" "$dest"
 }
 
+# write a shell-quoted key=value line to stdout (grouped into vmm.conf below)
+config_write()
+{
+	printf "%s='%s'\n" "$1" "$(printf '%s' "$2" | sed "s/'/'\\\\''/g")"
+}
+
 vm_name=
 verbose=0
 memory=
@@ -273,6 +279,14 @@ if [ -z "$network_tap_device_name" ]; then
 	[ -z "$network_vm_default_gateway" ] || fatal '--net-gateway requires --net-tap'
 fi
 
+# normalize to qemu display syntax (":N" listens on port 5900+N)
+if [ -n "$vnc" ]; then
+	case "$vnc" in
+		*:*) ;;
+		*) vnc=":$vnc" ;;
+	esac
+fi
+
 vm_dir="$vmm_dir/$vm_name"
 vm_config_path="$vm_dir/vmm.conf"
 monitor_socket_path="$vm_dir/monitor.socket"
@@ -333,13 +347,15 @@ else
 	boot_drive_format=qcow2
 fi
 
-echo "vm_disk_path=$vm_disk_path" >> "$vm_config_path"
-echo "memory=$memory" >> "$vm_config_path"
-echo "cores=$cores" >> "$vm_config_path"
-
 [ -n "$network_tap_device_name" ] && network_type='tap' || network_type='user'
 
-echo "network_type=$network_type" >> "$vm_config_path"
+ssh_port=
+if [ "$network_type" = 'user' ]; then
+	ssh_port=24000
+	while [ "$(ss --no-header --tcp state all sport "$ssh_port" | wc -l)" -ne 0 ]; do
+		ssh_port=$((ssh_port + 1))
+	done
+fi
 
 if [ "$attach_cloud_init_drive" -eq 1 ]; then
 	mkdir -p "$vm_cloud_init_dir"
@@ -433,9 +449,28 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 fi
 
 vm_uuid="$(uuidgen)"
-echo "vm_uuid=$vm_uuid" >> "$vm_config_path"
 
-echo "boot_drive_format=$boot_drive_format" >> "$vm_config_path"
+{
+	config_write vm_uuid "$vm_uuid"
+	config_write vm_disk_path "$vm_disk_path"
+	config_write boot_drive_format "$boot_drive_format"
+	config_write memory "$memory"
+	config_write cores "$cores"
+	config_write kvm "$enable_kvm"
+	config_write cpu "$cpu"
+	config_write vnc "$vnc"
+	config_write network_type "$network_type"
+	config_write network_tap_device_name "$network_tap_device_name"
+	config_write ssh_port "$ssh_port"
+	config_write vm_mac_address "$vm_mac_address"
+	config_write attach_cloud_init_drive "$attach_cloud_init_drive"
+	config_write second_drive "$second_drive"
+	config_write enable_spice "$enable_spice"
+	config_write log_serial "$log_serial"
+	config_write uefi "$uefi"
+	config_write enable_tpm "$enable_tpm"
+	config_write enable_qemu_guest_agent "$enable_qemu_guest_agent"
+} > "$vm_config_path"
 
 set -- -name "$vm_name" \
 	-m "$memory" \
@@ -449,25 +484,15 @@ set -- -name "$vm_name" \
 	-blockdev "node-name=disk1,discard=unmap,driver=${boot_drive_format},file.driver=file,file.filename=${vm_disk_path}" \
 	-device virtio-blk-pci,drive=disk1,bootindex=0
 
-echo "kvm=$enable_kvm" >> "$vm_config_path"
-
 if [ "$enable_kvm" -eq 1 ]; then
 	set -- "$@" -accel kvm
 fi
 
 if [ -n "$cpu" ]; then
-	echo "cpu=$cpu" >> "$vm_config_path"
 	set -- "$@" -cpu "$cpu"
-else
-	echo "cpu=''" >> "$vm_config_path"
 fi
 
 if [ -n "$vnc" ]; then
-	case "$vnc" in
-		*:*) ;;
-		*) vnc=":$vnc" ;;
-	esac
-	echo "vnc=$vnc" >> "$vm_config_path"
 	set -- "$@" -vnc "$vnc"
 fi
 
@@ -476,11 +501,7 @@ if [ "$attach_cloud_init_drive" -eq 1 ]; then
 		-device virtio-blk-pci,drive=cloud-init-drive
 fi
 
-echo "attach_cloud_init_drive=$attach_cloud_init_drive" >> "$vm_config_path"
-
 if [ -n "$second_drive" ]; then
-	echo "second_drive=$second_drive" >> "$vm_config_path"
-
 	set -- "$@" -blockdev "node-name=disk2,discard=unmap,driver=qcow2,file.driver=file,file.filename=${second_drive}" \
 		-device virtio-blk-pci,drive=disk2
 fi
@@ -491,26 +512,14 @@ if [ -n "$iso_path_option" ] || [ -n "$iso_url" ]; then
 fi
 
 if [ "$network_type" = 'user' ]; then
-	port=24000
-	while [ "$(ss --no-header --tcp state all sport "$port" | wc -l)" -ne 0 ]; do
-		port=$((port + 1))
-	done
-
-	echo "ssh_port=$port" >> "$vm_config_path"
-
-	set -- "$@" -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${port}-:22" \
+	set -- "$@" -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" \
 		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address}"
 fi
 
 if [ "$network_type" = 'tap' ]; then
-	echo "network_tap_device_name=$network_tap_device_name" >> "$vm_config_path"
-
 	set -- "$@" -netdev "tap,id=net0,ifname=${network_tap_device_name},script=no" \
 		-device "virtio-net-pci,netdev=net0,mac=${vm_mac_address}"
 fi
-
-echo "vm_mac_address=$vm_mac_address" >> "$vm_config_path"
-echo "enable_spice=$enable_spice" >> "$vm_config_path"
 
 if [ "$enable_spice" -eq 1 ]; then
 	set -- "$@" -display spice-app
@@ -520,14 +529,10 @@ else
 	set -- "$@" -display none
 fi
 
-echo "log_serial=$log_serial" >> "$vm_config_path"
-
 if [ "$log_serial" -eq 1 ]; then
 	qemu_serial_log_path="$vm_dir/serial-$(date +%Y%m%d-%H%M%S).log"
 	set -- "$@" -serial "file:$qemu_serial_log_path"
 fi
-
-echo "uefi=$uefi" >> "$vm_config_path"
 
 if [ "$uefi" -eq 1 ]; then
 	if [ "$uefi_empty_varstore" -eq 1 ]; then
@@ -540,8 +545,6 @@ if [ "$uefi" -eq 1 ]; then
 		-drive "if=pflash,format=qcow2,readonly=on,file=$ovmf_dir/OVMF_CODE_4M.secboot.qcow2" \
 		-drive "if=pflash,format=qcow2,file=$vm_dir/OVMF_VARS_4M.qcow2"
 fi
-
-echo "enable_tpm=$enable_tpm" >> "$vm_config_path"
 
 if [ "$enable_tpm" -eq 1 ]; then
 	mkdir -p "$XDG_RUNTIME_DIR/swtpm"
@@ -557,8 +560,6 @@ if [ "$enable_tpm" -eq 1 ]; then
 		-tpmdev emulator,id=tpm0,chardev=chrtpm \
 		-device tpm-crb,tpmdev=tpm0
 fi
-
-echo "enable_qemu_guest_agent=$enable_qemu_guest_agent" >> "$vm_config_path"
 
 if [ "$enable_qemu_guest_agent" -eq 1 ]; then
 	set -- "$@" -chardev "socket,path=$vm_dir/qemu_guest_agent.sock,server=on,wait=off,id=qga0" \
