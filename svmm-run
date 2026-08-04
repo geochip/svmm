@@ -322,7 +322,7 @@ if [ "$create_boot_drive" -eq 0 ]; then
 		vm_disk_path=$vm_disk_path.$boot_drive_format
 		qemu-img resize "$vm_disk_path" "$disk_size"
 	else
-		fatal "Unknown boot drive file format '$boot_drive_format"
+		fatal "Unknown boot drive file format '$boot_drive_format'"
 	fi
 else
 	qemu-img create -f qcow2 "$vm_disk_path" "$disk_size" > /dev/null || fatal "Failed to create a new empty boot drive for '$vm_name'"
