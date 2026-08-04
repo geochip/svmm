@@ -1,8 +1,25 @@
 #!/usr/bin/env sh
 
+# DHCP/DNS for the dynamic tap bridge; needs root (privileged ports 53/67)
+
 set -efux
+
+# find svmm-common even when invoked by absolute path or through a symlink
+# (root's PATH usually lacks the svmm directory)
+CDPATH=
+case $0 in
+	*/*)
+		self=$(readlink -f -- "$0" 2> /dev/null || printf '%s' "$0")
+		PATH="$(cd -- "$(dirname -- "$self")" && pwd):$PATH"
+		;;
+esac
 
 PROG=svmm-dnsmasq
 . svmm-common
 
-dnsmasq --log-queries --interface=svmmdynamicbr0 --listen-address=172.16.2.1 --bind-interface --no-daemon --dhcp-range=172.16.2.2,172.16.2.100 --dhcp-option=option:ntp-server,172.16.2.1 --dhcp-leasefile="$dnsmasq_leases_file"
+# dnsmasq lives in sbin which may be missing from the PATH
+command -v dnsmasq > /dev/null 2>&1 || PATH="$PATH:/usr/sbin:/sbin"
+
+# --conf-file=/dev/null: this instance is self-contained; the system-wide
+# config is ignored (and unreadable when running as a regular user)
+exec dnsmasq --conf-file=/dev/null --pid-file=/tmp/svmm-dnsmasq.pid --log-queries --interface=svmmdynamicbr0 --listen-address=172.16.2.1 --bind-interface --no-daemon --dhcp-range=172.16.2.2,172.16.2.100 --dhcp-option=option:ntp-server,172.16.2.1 --dhcp-leasefile="$dnsmasq_leases_file"
