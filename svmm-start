@@ -111,7 +111,7 @@ fi
 
 if [ -n "$iso_path" ]; then
 	set -- "$@" -blockdev "node-name=cdrom1-drive,read-only=on,force-share=on,driver=raw,file.driver=file,file.filename=$iso_path" \
-		-device ide-cd,drive=cdrom1,drive=cdrom1-drive,bootindex=1
+		-device ide-cd,id=cdrom1,drive=cdrom1-drive,bootindex=1
 fi
 
 if [ "${attach_cloud_init_drive:?}" -eq 1 ]; then
