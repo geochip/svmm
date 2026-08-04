@@ -34,6 +34,7 @@ show_help()
 	  --disk-size <GB>				allocate this much disk space for the boot drive (default: $default_disk_size)
 	  --boot-drive-url <URL>			use file at this url as boot image (default: $default_boot_drive_url)
 	  --boot-drive-path <path>			use local file at this path as boot image (mutually exclusive with --boot-drive-url)
+	  --force-download				download URL images even if already cached (VMs created from the old image may break)
 	  --boot-drive-format <FORMAT>			file format of boot image: qcow2 or raw (default: autodetect with qemu-img info)
 	  --drive <path>					attach an existing disk image (repeatable)
 	  --new-drive <size>				create and attach an empty qcow2 drive (repeatable)
@@ -92,6 +93,7 @@ cpu=
 replace=0
 iso_path_option=
 iso_url=
+force_download=0
 create_boot_drive=0
 disk_size=
 boot_drive_url=
@@ -152,6 +154,10 @@ while true; do
 	--iso-url)
 		iso_url="$2"
 		shift 2
+		;;
+	--force-download)
+		force_download=1
+		shift
 		;;
 	--create-boot-drive)
 		create_boot_drive=1
@@ -400,14 +406,18 @@ elif [ -n "$iso_url" ]; then
 	iso_path=$iso_dir/${iso_url##*/}
 fi
 
-if [ "$create_boot_drive" -eq 0 ] && [ -z "$boot_drive_path_option" ] && [ ! -f "$boot_drive_path" ]; then
-	echo "Downloading boot drive image from '$boot_drive_url'" >&2
-	fetch "$boot_drive_url" "$boot_drive_path"
+if [ "$create_boot_drive" -eq 0 ] && [ -z "$boot_drive_path_option" ]; then
+	if [ "$force_download" -eq 1 ] || [ ! -f "$boot_drive_path" ]; then
+		echo "Downloading boot drive image from '$boot_drive_url'" >&2
+		fetch "$boot_drive_url" "$boot_drive_path"
+	fi
 fi
 
-if [ -n "$iso_url" ] && [ ! -f "$iso_path" ]; then
-	echo "Downloading ISO from '$iso_url'" >&2
-	fetch "$iso_url" "$iso_path"
+if [ -n "$iso_url" ]; then
+	if [ "$force_download" -eq 1 ] || [ ! -f "$iso_path" ]; then
+		echo "Downloading ISO from '$iso_url'" >&2
+		fetch "$iso_url" "$iso_path"
+	fi
 fi
 
 # xz-compressed images are decompressed into the cache once and reused
@@ -416,7 +426,7 @@ if [ "$create_boot_drive" -eq 0 ]; then
 		*.xz)
 			decompressed=${boot_drive_path%.xz}
 			decompressed="$images_dir/${decompressed##*/}"
-			if [ ! -f "$decompressed" ]; then
+			if [ "$force_download" -eq 1 ] || [ ! -f "$decompressed" ]; then
 				echo "Decompressing '$boot_drive_path'" >&2
 				xz -dc "$boot_drive_path" > "$decompressed.tmp" || { rm -f "$decompressed.tmp"; fatal "Failed to decompress '$boot_drive_path'"; }
 				mv "$decompressed.tmp" "$decompressed"
