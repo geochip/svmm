@@ -2,6 +2,7 @@
 
 set -f
 
+# shellcheck disable=SC2034 # PROG is used by svmm-common
 PROG="${0##*/}"
 
 . svmm-common
@@ -73,6 +74,6 @@ else
 	qmp "$monitor_socket_path" '{"execute": "system_powerdown"}' > /dev/null
 fi
 
-[ "$wait" -eq 1 ] || exit
+[ "$wait" -eq 1 ] || exit 0
 
 wait_qemu_exit "$vm_dir"
