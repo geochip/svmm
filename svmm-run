@@ -563,10 +563,9 @@ if [ "$enable_qemu_guest_agent" -eq 1 ]; then
 fi
 
 if [ -n "$kernel_path" ]; then
-	set -- "$@" -kernel "${kernel_path:?}" -initrd "${initramfs_path:?}"
-	if [ -n "$append_cmdline" ]; then
-		set -- "$@" -append "${append_cmdline:?}"
-	fi
+	set -- "$@" -kernel "${kernel_path:?}"
+	[ -z "$initramfs_path" ] || set -- "$@" -initrd "$initramfs_path"
+	[ -z "$append_cmdline" ] || set -- "$@" -append "$append_cmdline"
 fi
 
 if [ "$enable_gdb" -eq 1 ]; then
