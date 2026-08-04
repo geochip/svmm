@@ -60,4 +60,11 @@ done
 
 [ "$verbose" -eq 0 ] || set -x
 
+if [ -z "$command" ]; then
+	show_help
+	exit 1
+fi
+
+command -v "svmm-$command" > /dev/null 2>&1 || fatal "unknown command '$command'"
+
 exec "svmm-$command" "$@"
