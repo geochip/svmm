@@ -97,7 +97,14 @@ monitor_socket_path="$vm_dir/monitor.socket"
 [ -S "$monitor_socket_path" ] || fatal "monitor socket is not accessible for VM '$vm_name'"
 
 if [ "$command" = 'raw' ]; then
-	socat READLINE "UNIX-CONNECT:$monitor_socket_path"
+	if [ -t 0 ]; then
+		# interactive: readline provides line editing and history
+		socat READLINE "UNIX-CONNECT:$monitor_socket_path"
+	else
+		# piped or redirected stdin: plain stdio so scripts can feed
+		# QMP commands, e.g. printf ... | svmm monitor raw VM
+		socat - "UNIX-CONNECT:$monitor_socket_path"
+	fi
 	exit
 fi
 
