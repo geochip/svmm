@@ -14,7 +14,7 @@ show_help()
 
 	Commands:
 	  raw				connect to monitor socket to issue raw QMP requests
-	  hmp				interactive HMP monitor (classic commands like 'info block')
+	  hmp				connect to the VM's HMP monitor (classic commands like 'info block')
 	  query-block			query info about block devices
 	  eject <DEVICE_ID>		eject device with id DEVICE_ID
 	  change <DEVICE_ID> <FILENAME>	change device with id DEVICE_ID to FILENAME
@@ -96,10 +96,15 @@ done
 
 vm_dir="$vmm_dir/$vm_name"
 monitor_socket_path="$vm_dir/monitor.socket"
+hmp_socket_path="$vm_dir/hmp.socket"
 
 [ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
 
-[ -S "$monitor_socket_path" ] || fatal "monitor socket is not accessible for VM '$vm_name'"
+if [ "$command" = 'hmp' ]; then
+	[ -S "$hmp_socket_path" ] || fatal "hmp monitor socket is not accessible for VM '$vm_name'"
+else
+	[ -S "$monitor_socket_path" ] || fatal "monitor socket is not accessible for VM '$vm_name'"
+fi
 
 if [ "$command" = 'raw' ]; then
 	if [ -t 0 ]; then
@@ -114,18 +119,17 @@ if [ "$command" = 'raw' ]; then
 fi
 
 if [ "$command" = 'hmp' ]; then
-	# run classic HMP commands through QMP's human-monitor-command,
-	# so the existing monitor socket works with 'info block' style
-	# input; each input line is wrapped in JSON and each reply is
-	# unwrapped back to plain text
-	{
-		printf '%s\n' '{"execute":"qmp_capabilities"}'
-		while IFS= read -r line || [ -n "$line" ]; do
-			[ -n "$line" ] || continue
-			escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
-			printf '{"execute":"human-monitor-command","arguments":{"command-line":"%s"}}\n' "$escaped"
-		done
-	} | socat - "UNIX-CONNECT:$monitor_socket_path" | jq -r 'if (.return? | type) == "string" then .return elif .error? then ("ERROR: " + .error.desc) else empty end'
+	if [ -t 0 ]; then
+		# interactive: connect with a raw terminal so QEMU's readline
+		# handles editing, history and tab completion (cooked mode
+		# would echo input twice)
+		socat -,raw "UNIX-CONNECT:$hmp_socket_path"
+	else
+		# piped or redirected stdin: plain stdio so the reply isn't cut
+		# off on EOF; QEMU's line editor still re-echoes the input, use
+		# the QMP socket for clean scripting
+		socat - "UNIX-CONNECT:$hmp_socket_path"
+	fi
 	exit
 fi
 
