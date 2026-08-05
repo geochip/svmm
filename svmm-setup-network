@@ -15,10 +15,16 @@ ip addr add 172.16.1.1/24 dev svmmstaticbr0 2> /dev/null || true
 ip tuntap add dev svmmstatictap0 mode tap 2> /dev/null || true
 ip tuntap add dev svmmstatictap1 mode tap 2> /dev/null || true
 ip tuntap add dev svmmstatictap2 mode tap 2> /dev/null || true
+ip tuntap add dev svmmstatictap3 mode tap 2> /dev/null || true
+ip tuntap add dev svmmstatictap4 mode tap 2> /dev/null || true
+ip tuntap add dev svmmstatictap5 mode tap 2> /dev/null || true
 
 ip link set dev svmmstatictap0 master svmmstaticbr0 up
 ip link set dev svmmstatictap1 master svmmstaticbr0 up
 ip link set dev svmmstatictap2 master svmmstaticbr0 up
+ip link set dev svmmstatictap3 master svmmstaticbr0 up
+ip link set dev svmmstatictap4 master svmmstaticbr0 up
+ip link set dev svmmstatictap5 master svmmstaticbr0 up
 
 # Dynamic net (using dhcp)
 
@@ -29,10 +35,16 @@ ip addr add 172.16.2.1/24 dev svmmdynamicbr0 2> /dev/null || true
 ip tuntap add dev svmmdynamictap0 mode tap 2> /dev/null || true
 ip tuntap add dev svmmdynamictap1 mode tap 2> /dev/null || true
 ip tuntap add dev svmmdynamictap2 mode tap 2> /dev/null || true
+ip tuntap add dev svmmdynamictap3 mode tap 2> /dev/null || true
+ip tuntap add dev svmmdynamictap4 mode tap 2> /dev/null || true
+ip tuntap add dev svmmdynamictap5 mode tap 2> /dev/null || true
 
 ip link set dev svmmdynamictap0 master svmmdynamicbr0 up
 ip link set dev svmmdynamictap1 master svmmdynamicbr0 up
 ip link set dev svmmdynamictap2 master svmmdynamicbr0 up
+ip link set dev svmmdynamictap3 master svmmdynamicbr0 up
+ip link set dev svmmdynamictap4 master svmmdynamicbr0 up
+ip link set dev svmmdynamictap5 master svmmdynamicbr0 up
 
 # Routing (rebuilt from scratch so re-running doesn't duplicate rules)
 
