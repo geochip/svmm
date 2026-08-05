@@ -363,13 +363,13 @@ fi
 
 vm_dir="$vmm_dir/$vm_name"
 vm_config_path="$vm_dir/vmm.conf"
-monitor_socket_path="$vm_dir/monitor.socket"
+qmp_socket_path="$vm_dir/qmp.socket"
 
 if [ -d "$vm_dir" ]; then
 	[ "$replace" -eq 1 ] || fatal "VM '$vm_name' already exists"
 
-	if [ -S "$monitor_socket_path" ]; then
-		qmp "$monitor_socket_path" '{"execute": "quit"}' > /dev/null
+	if [ -S "$qmp_socket_path" ]; then
+		qmp "$qmp_socket_path" '{"execute": "quit"}' > /dev/null
 		wait_qemu_exit "$vm_dir"
 	fi
 

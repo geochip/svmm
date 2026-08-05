@@ -53,6 +53,6 @@ vm_dir="$vmm_dir/$vm_name"
 qemu_pid_file_path="$vm_dir/qemu_pid"
 read -r qemu_pid  2> /dev/null < "$qemu_pid_file_path"
 
-[ -S "$vm_dir/monitor.socket" ] && [ -s "$qemu_pid_file_path" ] && [ -n "$qemu_pid" ] && ps -p "$qemu_pid" -o 'pid=' > /dev/null && exit
+[ -S "$vm_dir/qmp.socket" ] && [ -s "$qemu_pid_file_path" ] && [ -n "$qemu_pid" ] && ps -p "$qemu_pid" -o 'pid=' > /dev/null && exit
 
 exit 1

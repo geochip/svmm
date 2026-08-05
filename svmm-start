@@ -73,7 +73,7 @@ done
 [ -z "$iso_path" ] || iso_path=$(abspath "$iso_path")
 
 vm_dir="$vmm_dir/$vm_name"
-monitor_socket_path="$vm_dir/monitor.socket"
+qmp_socket_path="$vm_dir/qmp.socket"
 hmp_socket_path="$vm_dir/hmp.socket"
 qemu_pid_file_path="$vm_dir/qemu_pid"
 
@@ -94,7 +94,7 @@ set -- -name "$vm_name" \
 	-nodefaults \
 	-pidfile "$qemu_pid_file_path" \
 	-smbios "type=1,uuid=${vm_uuid:?}" \
-	-chardev "socket,id=qmp,path=${monitor_socket_path},server=on,wait=off" \
+	-chardev "socket,id=qmp,path=${qmp_socket_path},server=on,wait=off" \
 	-mon chardev=qmp,mode=control,pretty=off \
 	-chardev "socket,id=hmp,path=${hmp_socket_path},server=on,wait=off" \
 	-mon chardev=hmp,mode=readline \

@@ -13,7 +13,7 @@ show_help()
 	svmm-monitor [options] COMMAND VM_NAME
 
 	Commands:
-	  raw				connect to monitor socket to issue raw QMP requests
+	  qmp				connect to the VM's QMP monitor (raw JSON requests)
 	  hmp				connect to the VM's HMP monitor (classic commands like 'info block')
 	  query-block			query info about block devices
 	  eject <DEVICE_ID>		eject device with id DEVICE_ID
@@ -45,8 +45,8 @@ while true; do
 		show_help
 		exit 1
 		;;
-	raw)
-		command=raw
+	qmp)
+		command=qmp
 		shift
 		;;
 	hmp)
@@ -95,7 +95,7 @@ done
 [ -n "$vm_name" ] || fatal 'VM_NAME is not specified'
 
 vm_dir="$vmm_dir/$vm_name"
-monitor_socket_path="$vm_dir/monitor.socket"
+qmp_socket_path="$vm_dir/qmp.socket"
 hmp_socket_path="$vm_dir/hmp.socket"
 
 [ -d "$vm_dir" ] || fatal "VM '$vm_name' doesn't exist"
@@ -103,47 +103,48 @@ hmp_socket_path="$vm_dir/hmp.socket"
 if [ "$command" = 'hmp' ]; then
 	[ -S "$hmp_socket_path" ] || fatal "hmp monitor socket is not accessible for VM '$vm_name'"
 else
-	[ -S "$monitor_socket_path" ] || fatal "monitor socket is not accessible for VM '$vm_name'"
+	[ -S "$qmp_socket_path" ] || fatal "qmp monitor socket is not accessible for VM '$vm_name'"
 fi
 
-if [ "$command" = 'raw' ]; then
+if [ "$command" = 'qmp' ]; then
 	if [ -t 0 ]; then
 		# interactive: readline provides line editing and history
-		socat READLINE "UNIX-CONNECT:$monitor_socket_path"
+		socat READLINE "UNIX-CONNECT:$qmp_socket_path"
 	else
 		# piped or redirected stdin: plain stdio so scripts can feed
-		# QMP commands, e.g. printf ... | svmm monitor raw VM
-		socat - "UNIX-CONNECT:$monitor_socket_path"
+		# QMP commands, e.g. printf ... | svmm monitor qmp VM
+		socat - "UNIX-CONNECT:$qmp_socket_path" 2> /dev/null
 	fi
 	exit
 fi
 
 if [ "$command" = 'hmp' ]; then
-	if [ -t 0 ]; then
-		# interactive: connect with a raw terminal so QEMU's readline
-		# handles editing, history and tab completion (cooked mode
-		# would echo input twice)
-		socat -,raw "UNIX-CONNECT:$hmp_socket_path"
-	else
-		# piped or redirected stdin: plain stdio so the reply isn't cut
-		# off on EOF; QEMU's line editor still re-echoes the input, use
-		# the QMP socket for clean scripting
-		socat - "UNIX-CONNECT:$hmp_socket_path"
-	fi
+	# run classic HMP commands through QMP's human-monitor-command,
+	# so the existing monitor socket works with 'info block' style
+	# input; each input line is wrapped in JSON and each reply is
+	# unwrapped back to plain text
+	{
+		printf '%s\n' '{"execute":"qmp_capabilities"}'
+		while IFS= read -r line || [ -n "$line" ]; do
+			[ -n "$line" ] || continue
+			escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
+			printf '{"execute":"human-monitor-command","arguments":{"command-line":"%s"}}\n' "$escaped"
+		done
+	} | socat - "UNIX-CONNECT:$qmp_socket_path" | jq -r 'if (.return? | type) == "string" then .return elif .error? then ("ERROR: " + .error.desc) else empty end'
 	exit
 fi
 
 if [ "$command" = 'query-block' ]; then
-	qmp "$monitor_socket_path" '{"execute":"query-block"}' | jq -r '.return[]? | "\(.qdev) \(.inserted.image.filename)"'
+	qmp "$qmp_socket_path" '{"execute":"query-block"}' | jq -r '.return[]? | "\(.qdev) \(.inserted.image.filename)"'
 	exit
 fi
 
 if [ "$command" = 'eject' ]; then
-	qmp "$monitor_socket_path" '{"execute":"eject","arguments":{"id":"'"$device_id"'"}}' > /dev/null
+	qmp "$qmp_socket_path" '{"execute":"eject","arguments":{"id":"'"$device_id"'"}}' > /dev/null
 	exit
 fi
 
 if [ "$command" = 'change' ]; then
-	qmp "$monitor_socket_path" '{"execute":"blockdev-change-medium","arguments":{"id":"'"$device_id"'","filename":"'"$filename"'","format":"raw"}}' > /dev/null
+	qmp "$qmp_socket_path" '{"execute":"blockdev-change-medium","arguments":{"id":"'"$device_id"'","filename":"'"$filename"'","format":"raw"}}' > /dev/null
 	exit
 fi
