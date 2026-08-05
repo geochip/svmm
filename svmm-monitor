@@ -14,7 +14,8 @@ show_help()
 
 	Commands:
 	  qmp				connect to the VM's QMP monitor (raw JSON requests)
-	  hmp				connect to the VM's HMP monitor (classic commands like 'info block')
+	  hmp				interactive HMP session (classic commands like 'info
+	  				block'); use 'qmp' for scripting
 	  query-block			query info about block devices
 	  eject <DEVICE_ID>		eject device with id DEVICE_ID
 	  change <DEVICE_ID> <FILENAME>	change device with id DEVICE_ID to FILENAME
@@ -79,12 +80,10 @@ while true; do
 		fi
 		;;
 	*)
-		if [ -n "$1" ]; then
-			vm_name="$1"
-			shift
-		else
-			break
-		fi
+		[ -n "$1" ] || break
+		vm_name="$1"
+		shift
+		break
 		;;
 	esac
 done
@@ -119,18 +118,7 @@ if [ "$command" = 'qmp' ]; then
 fi
 
 if [ "$command" = 'hmp' ]; then
-	# run classic HMP commands through QMP's human-monitor-command,
-	# so the existing monitor socket works with 'info block' style
-	# input; each input line is wrapped in JSON and each reply is
-	# unwrapped back to plain text
-	{
-		printf '%s\n' '{"execute":"qmp_capabilities"}'
-		while IFS= read -r line || [ -n "$line" ]; do
-			[ -n "$line" ] || continue
-			escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
-			printf '{"execute":"human-monitor-command","arguments":{"command-line":"%s"}}\n' "$escaped"
-		done
-	} | socat - "UNIX-CONNECT:$qmp_socket_path" | jq -r 'if (.return? | type) == "string" then .return elif .error? then ("ERROR: " + .error.desc) else empty end'
+	socat READLINE "UNIX-CONNECT:$hmp_socket_path" 2> /dev/null
 	exit
 fi
 
