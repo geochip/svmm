@@ -13,7 +13,8 @@ show_help()
 	svmm-monitor [options] COMMAND VM_NAME
 
 	Commands:
-	  raw				connect to monitor socket to issue raw requests
+	  raw				connect to monitor socket to issue raw QMP requests
+	  hmp				interactive HMP monitor (classic commands like 'info block')
 	  query-block			query info about block devices
 	  eject <DEVICE_ID>		eject device with id DEVICE_ID
 	  change <DEVICE_ID> <FILENAME>	change device with id DEVICE_ID to FILENAME
@@ -46,6 +47,10 @@ while true; do
 		;;
 	raw)
 		command=raw
+		shift
+		;;
+	hmp)
+		command=hmp
 		shift
 		;;
 	query-block)
@@ -105,6 +110,22 @@ if [ "$command" = 'raw' ]; then
 		# QMP commands, e.g. printf ... | svmm monitor raw VM
 		socat - "UNIX-CONNECT:$monitor_socket_path"
 	fi
+	exit
+fi
+
+if [ "$command" = 'hmp' ]; then
+	# run classic HMP commands through QMP's human-monitor-command,
+	# so the existing monitor socket works with 'info block' style
+	# input; each input line is wrapped in JSON and each reply is
+	# unwrapped back to plain text
+	{
+		printf '%s\n' '{"execute":"qmp_capabilities"}'
+		while IFS= read -r line || [ -n "$line" ]; do
+			[ -n "$line" ] || continue
+			escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
+			printf '{"execute":"human-monitor-command","arguments":{"command-line":"%s"}}\n' "$escaped"
+		done
+	} | socat - "UNIX-CONNECT:$monitor_socket_path" | jq -r 'if (.return? | type) == "string" then .return elif .error? then ("ERROR: " + .error.desc) else empty end'
 	exit
 fi
 
